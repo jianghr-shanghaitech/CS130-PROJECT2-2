@@ -18,13 +18,13 @@
 static void (*syscalls[15])(struct intr_frame *);
 
 void halt(); /* syscall halt. */
-void exit(uint32_t * f); /* syscall exit. */
-void exec(struct intr_frame* f); /* syscall exec. */
+void exit (int status); /* syscall exit. */
+int exec (const char *cmd_line); /* syscall exec. */
 
-void create(struct intr_frame* f); /* syscall create */
-void remove(struct intr_frame* f); /* syscall remove */
-void open(struct intr_frame* f);/* syscall open */
-void wait(struct intr_frame* f); /*syscall wait */
+bool create (const char *file, unsigned initial_size); /* syscall create */
+bool remove (const char *file); /* syscall remove */
+int open (const char *file);/* syscall open */
+int wait (int pid); /*syscall wait */
 void filesize(struct intr_frame* f);/* syscall filesize */
 void read(struct intr_frame* f);  /* syscall read */
 void write(struct intr_frame* f); /* syscall write */
@@ -33,11 +33,26 @@ void tell(struct intr_frame* f); /* syscall tell */
 void close(struct intr_frame* f); /* syscall close */
 static void syscall_handler (struct intr_frame *);
 struct thread_file * find_file_id(int fd);
+static void check_uadd (const uint8_t *uaddr); // check useraddress validation
+
+void read_user(void* ptr, void* rt, size_t size); // read from user stack
+void invalid_exit(); // handle excption exit cases
+static int get_user (const uint8_t *uaddr);
+
+struct lock syscall_lock;
+
+
+static void check_uadd(const uint8_t *uaddr) {
+  // check uaddr range or segfaults
+  if(get_user(uaddr) == -1)
+    invalid_exit();
+}
 
 
 void
 syscall_init (void)
 {
+  lock_init(&syscall_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   syscalls[SYS_HALT] = &halt;
   syscalls[SYS_EXIT] = &exit;
@@ -54,9 +69,12 @@ syscall_init (void)
   syscalls[SYS_FILESIZE] = &filesize;
 }
 
-static int 
-get_user (const uint8_t *uaddr)
+static int get_user (const uint8_t *uaddr)
 {
+  // ensure uaddr under PHYS_BASE
+  if (! ((void*)uaddr < PHYS_BASE)) {
+    return -1;
+  }
   int result;
   asm ("movl $1f, %0; movzbl %1, %0; 1:" : "=&a" (result) : "m" (*uaddr));
   return result;
@@ -85,84 +103,56 @@ void * ptr2(const void *vaddr)
 }
 
 
-void 
-halt () {shutdown_power_off();}
+void halt () {shutdown_power_off();}
 
-void 
-exit (uint32_t * f)
+void exit (int status)
 {
-  uint32_t *user_ptr = f;
-  ptr2 (user_ptr + 1);
-  *user_ptr++;
-  thread_current()->exit_status = *user_ptr;
+  thread_current()->exit_status = status;
   thread_exit ();
 }
 
-void 
-exec (struct intr_frame* f)
+int exec (const char *cmd_line)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (f->esp + 1);
-  ptr2 (*(user_ptr + 1));
-  *user_ptr++;
-  f->eax = process_execute((char*)* user_ptr);
-}
-
-void 
-wait (struct intr_frame* f)
-{
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 1);
-  *user_ptr++;
-  f->eax = process_wait(*user_ptr);
+  check_uadd(cmd_line);
+  lock_acquire(&syscall_lock);
+  int pid = process_execute(cmd_line);
+  lock_release(&syscall_lock);
+  return pid;
 }
 
 
-void 
-create(struct intr_frame* f)
+int wait (int pid)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 5);
-  ptr2 (*(user_ptr + 4));
-  *user_ptr++;
-  acquire_lock_f ();
-  f->eax = filesys_create ((const char *)*user_ptr, *(user_ptr+1));
-  release_lock_f ();
+  return process_wait(pid);
 }
 
-void 
-remove(struct intr_frame* f)
+
+bool create (const char *file, unsigned initial_size)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 1);
-  ptr2 (*(user_ptr + 1));
-  *user_ptr++;
-  acquire_lock_f ();
-  f->eax = filesys_remove ((const char *)*user_ptr);
-  release_lock_f ();
+  check_uadd(file);
+  lock_acquire(&syscall_lock);
+  bool success = filesys_create (file, initial_size);
+  lock_release(&syscall_lock);
+  return success;
 }
 
-void 
-open (struct intr_frame* f)
+bool remove (const char *file)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 1);
-  ptr2 (*(user_ptr + 1));
-  *user_ptr++;
-  acquire_lock_f ();
-  release_lock_f ();
-  struct file * file_opened = filesys_open((const char *)*user_ptr);
-  struct thread * t = thread_current();
-  if (file_opened)
-  {
-    struct thread_file *thread_file_temp = malloc(sizeof(struct thread_file));
-    thread_file_temp->fd = t->file_fd++;
-    thread_file_temp->file = file_opened;
-    list_push_back (&t->files, &thread_file_temp->file_elem);
-    f->eax = thread_file_temp->fd;
-    return;
-  }
-  f->eax = -1;
+  check_uadd(file);
+  bool rt;
+  lock_acquire(&syscall_lock);
+  rt = filesys_remove (file);
+  lock_release(&syscall_lock);
+  return rt;
+}
+
+int open (const char *file)
+{
+  check_uadd(file);
+  lock_acquire(&syscall_lock);
+  struct file* file_opened;
+  struct file_desc* fd = palloc_get_page(0);
+  if (!fd) return -1;
 }
 void 
 write (struct intr_frame* f)
@@ -332,17 +322,56 @@ syscall_handler (struct intr_frame *f UNUSED)
     thread_exit ();
   }
   switch(type){
-    case SYS_HALT:
+    case SYS_HALT:{
       halt();
-      return;
-    case SYS_EXIT:
-      exit(f->esp);
-      return;
-    // case SYS_EXEC:
-    // case SYS_WAIT:
-    // case SYS_CREATE:
-    // case SYS_REMOVE:
-    // case SYS_OPEN:
+      break;
+    }
+    
+    case SYS_EXIT:{
+      int status;
+      read_user(f->esp + 4, &status, sizeof(int));
+      exit(status);
+      break;
+    }
+
+    case SYS_EXEC:{
+      void* cmdline;
+      read_user(f->esp + 4, &cmdline, sizeof(cmdline));
+      int pid = exec(cmdline);
+      f->eax = (uint32_t) pid;
+      break;
+    }
+
+    case SYS_WAIT:{
+      int pid;
+      read_user(f->esp + 4, &pid, sizeof(int));
+      f->eax = wait(pid);
+      break;
+    }
+
+    case SYS_CREATE:{
+      const char* file;
+      unsigned size;
+      read_user(f->esp + 4, &file, sizeof(file));
+      read_user(f->esp + 8, &size, sizeof(size));
+
+      f->eax = create(file, size);
+      break;
+    }
+    
+    case SYS_REMOVE:{
+      const char* file;
+      read_user(f->esp + 4, &file, sizeof(file));
+      f->eax = remove(file);
+      break;
+    }
+    
+    case SYS_OPEN:{
+      const char* file;
+      read_user(f->esp + 4, &file, sizeof(file));
+      f->eax = open(file);
+      break;
+    }
     // case SYS_FILESIZE:
     // case SYS_READ:
     // case SYS_WRITE:
@@ -368,3 +397,20 @@ syscall_handler (struct intr_frame *f UNUSED)
 //   }
 //   syscalls[type](f);
 // }
+
+void invalid_exit(){
+  if(lock_held_by_current_thread(&syscall_lock))
+    lock_release(&syscall_lock);
+  thread_current()->exit_status = -1;
+  thread_exit();
+}
+
+void read_user(void* ptr, void* rt, size_t size){
+  for(size_t i=0; i<size; i++) {
+    int value = get_user(ptr + i);
+    if(value == -1) // segfault
+      invalid_exit();
+    
+    *(char*)(rt + i) = (char) value;
+  }
+}
