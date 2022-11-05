@@ -150,7 +150,7 @@ process_wait (tid_t child_tid UNUSED)
 {
   struct list *childs = &thread_current()->childs;
   struct list_elem *temp = list_begin (childs);
-  struct thread *temp2 = NULL;
+  struct thread *temp2;
   struct list_elem * end = list_end (childs);
   
   while (temp != end)

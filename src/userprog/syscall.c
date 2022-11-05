@@ -14,8 +14,6 @@
 #include "pagedir.h"
 #include <threads/vaddr.h>
 #include <filesys/filesys.h>
-# define USER_VADDR_BOUND (void*) 0x08048000
-static void (*syscalls[15])(struct intr_frame *);
 
 void halt(); /* syscall halt. */
 void exit (int status); /* syscall exit. */
@@ -27,10 +25,10 @@ int open (const char *file);/* syscall open */
 int wait (int pid); /*syscall wait */
 int filesize (int fd);/* syscall filesize */
 int read (int fd, void *buffer, unsigned size);  /* syscall read */
-void write(struct intr_frame* f); /* syscall write */
-void seek(struct intr_frame* f); /* syscall seek */
-void tell(struct intr_frame* f); /* syscall tell */
-void close(struct intr_frame* f); /* syscall close */
+int write (int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position); /* syscall seek */
+unsigned tell (int fd); /* syscall tell */
+void close(int fd); /* syscall close */
 static void syscall_handler (struct intr_frame *);
 struct thread_file * find_file_id(int fd);
 static void check_uadd (const uint8_t *uaddr); // check useraddress validation
@@ -54,19 +52,6 @@ syscall_init (void)
 {
   lock_init(&syscall_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  syscalls[SYS_HALT] = &halt;
-  syscalls[SYS_EXIT] = &exit;
-  syscalls[SYS_EXEC] = &exec;
-  syscalls[SYS_WAIT] = &wait;
-  syscalls[SYS_CREATE] = &create;
-  syscalls[SYS_REMOVE] = &remove;
-  syscalls[SYS_OPEN] = &open;
-  syscalls[SYS_WRITE] = &write;
-  syscalls[SYS_SEEK] = &seek;
-  syscalls[SYS_TELL] = &tell;
-  syscalls[SYS_CLOSE] =&close;
-  syscalls[SYS_READ] = &read;
-  syscalls[SYS_FILESIZE] = &filesize;
 }
 
 /* Reads a byte at user virtual address UADDR.
@@ -188,77 +173,64 @@ int open (const char *file)
     return -1;
   }
 }
-void 
-write (struct intr_frame* f)
+
+int write (int fd, const void *buffer, unsigned size)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 7);
-  ptr2 (*(user_ptr + 6));
-  *user_ptr++;
-  const char * buffer = (const char *)*(user_ptr+1);
-  off_t size = *(user_ptr+2);
-  if (*user_ptr == 1) {
+  int rt;
+  if (fd == 1) {
     putbuf(buffer,size);
-    f->eax = size;
+    return size;
   }
   else
   {
-    struct thread_file * thread_file_temp = find_file_id (*user_ptr);
+    struct thread_file * thread_file_temp = find_file_id (fd);
     if (thread_file_temp)
     {
-      acquire_lock_f ();
-      f->eax = file_write (thread_file_temp->file, buffer, size);
-      release_lock_f ();
-      return;
+      lock_acquire(&syscall_lock);
+      rt = file_write (thread_file_temp->file, buffer, size);
+      lock_release(&syscall_lock);
     } 
-    f->eax = 0;
+    else{
+      rt = 0;
+    }
   }
+  return rt;
 }
 /* Do system seek, by calling the function file_seek() in filesystem */
-void 
-seek(struct intr_frame* f)
+void seek(int fd, unsigned position)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 5);
-  *user_ptr++;
-  struct thread_file *file_temp = find_file_id (*user_ptr);
+  struct thread_file *file_temp = find_file_id (fd);
   if (file_temp)
   {
-    acquire_lock_f ();
-    file_seek (file_temp->file, *(user_ptr+1));
-    release_lock_f ();
+    lock_acquire(&syscall_lock);
+    file_seek (file_temp->file, position);
+    lock_release(&syscall_lock);
   }
 }
 
-void 
-tell (struct intr_frame* f)
+unsigned tell (int fd)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 1);
-  *user_ptr++;
-  struct thread_file *thread_file_temp = find_file_id (*user_ptr);
+  struct thread_file *thread_file_temp = find_file_id (fd);
+  int rt;
   if (thread_file_temp)
   {
-    acquire_lock_f ();
-    f->eax = file_tell (thread_file_temp->file);
-    release_lock_f ();
+    lock_acquire(&syscall_lock);
+    rt = file_tell (thread_file_temp->file);
+    lock_release(&syscall_lock);
   }else{
-    f->eax = -1;
+    rt = -1;
   }
+  return rt;
 }
 
-void 
-close (struct intr_frame* f)
+void close (int fd)
 {
-  uint32_t *user_ptr = f->esp;
-  ptr2 (user_ptr + 1);
-  *user_ptr++;
-  struct thread_file * opened_file = find_file_id (*user_ptr);
+  struct thread_file * opened_file = find_file_id (fd);
   if (opened_file)
   {
-    acquire_lock_f ();
+    lock_acquire(&syscall_lock);
     file_close (opened_file->file);
-    release_lock_f ();
+    lock_release(&syscall_lock);
     list_remove (&opened_file->file_elem);
     free (opened_file);
   }
@@ -271,9 +243,9 @@ int filesize (int fd){
   int rt;
   if (file_temp)
   {
-    acquire_lock_f ();
+    lock_acquire(&syscall_lock);
     rt = file_length (file);
-    release_lock_f ();
+    lock_release(&syscall_lock);
   }
   else rt = -1;
   return rt;
@@ -423,29 +395,44 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax = read(fd, buffer, size);
       break;
     }
-    // case SYS_WRITE:
-    // case SYS_SEEK:
-    // case SYS_TELL:
-    // case SYS_CLOSE:
+    case SYS_WRITE:
+      {
+        int fd;
+        void *buffer;
+        unsigned size;
+        read_user(f->esp + 4, &fd, sizeof(fd));
+        read_user(f->esp + 8, &buffer, sizeof(buffer));
+        read_user(f->esp + 12, &size, sizeof(size));
+        f->eax = write(fd, buffer, size);
+        break;
+      }
+    case SYS_SEEK:
+    {
+      int fd;
+      unsigned position;
+      read_user(f->esp + 4, &fd, sizeof(fd));
+      read_user(f->esp + 8, &position, sizeof(position));
+      break;
+    }
+    case SYS_TELL:
+    {
+      int fd;
+      read_user(f->esp + 4, &fd, sizeof(fd));
+      f->eax = tell(fd);
+      break;
+    }
+    case SYS_CLOSE:
+    {
+      int fd;
+      read_user(f->esp + 4, &fd, sizeof(fd));
+      close(fd);
+      break;
+    }
     default:
-      syscalls[type](f);
-      // exit_special ();
+      invalid_exit();
       break;
   }
 }
-//   int * p = f->esp;
-//   ptr2 (p + 1);
-//   int type = * (int *)f->esp;
-//   if(type <= 0 || type >= 15){
-//     thread_current()->exit_status = -1;
-//     thread_exit ();
-//   }
-//   if (type == 1)
-//   {
-//     syscalls[type](f->esp);
-//   }
-//   syscalls[type](f);
-// }
 
 void invalid_exit(){
   if(lock_held_by_current_thread(&syscall_lock))
