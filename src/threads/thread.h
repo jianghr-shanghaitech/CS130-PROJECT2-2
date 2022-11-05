@@ -137,6 +137,7 @@ struct thread
     struct list files;                  /* List of opened files */
     int file_fd;                        /* File's descriptor */
     struct file * file_owned;           /* The file opened */
+    struct list file_descriptors;       /* List of file_descriptors the thread contains */
 
   };
 
