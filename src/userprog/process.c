@@ -19,17 +19,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-struct intr_frame set_inf(struct intr_frame in_f)
+void exec_status(bool b)
 {
-  memset (&in_f, 0, sizeof in_f);
-  in_f.gs = SEL_UDSEG;
-  in_f.fs = SEL_UDSEG;
-  in_f.es = SEL_UDSEG;
-  in_f.ds = SEL_UDSEG;
-  in_f.ss = SEL_UDSEG;
-  in_f.cs = SEL_UCSEG;
-  in_f.eflags = FLAG_IF | FLAG_MBS;
-  return in_f;
+  if (b) thread_current ()->parent->execute = true;
+  else thread_current ()->parent->execute = false;
 }
 
 static thread_func start_process NO_RETURN;
@@ -84,20 +77,26 @@ start_process (void *file_name_)
   char *copy_temp=malloc(filesize);
   strlcpy(copy_temp,file_name,filesize);
 
-  in_f = set_inf(in_f);
+  memset (&in_f, 0, sizeof in_f);
+  in_f.gs =in_f.fs =in_f.es =in_f.ds = in_f.ss = SEL_UDSEG;
+  in_f.cs = SEL_UCSEG;
+  in_f.eflags = FLAG_IF | FLAG_MBS;
 
-  char *temp, *save_ptr;
+  char *save_ptr;
   file_name = strtok_r (file_name, " ", &save_ptr);
   execute = load (file_name, &in_f.eip, &in_f.esp);
 
   if (execute){
     int argc = 0;
     int argv[50];
-    temp = copy_temp;
-    while(NULL != (temp = strtok_r (temp, " ", &save_ptr))){
-      in_f.esp -= (strlen(temp)+1);
-      memcpy (in_f.esp, temp, strlen(temp)+1);
-      argv[argc++] = (int) in_f.esp;
+    char * temp = copy_temp;
+    int temp_size = strlen(temp)+1;
+    while(NULL != (temp = strtok_r (temp, " ", &save_ptr)))
+    {
+      in_f.esp -= (temp_size);
+      int int_esp = (int) in_f.esp;
+      memcpy (in_f.esp, temp, temp_size);
+      argv[argc++] = int_esp;
       temp = NULL;
     }
     in_f.esp = (int) in_f.esp & 0xfffffffc; // ensure esp % 4 == 0
@@ -114,13 +113,12 @@ start_process (void *file_name_)
     *(int *) in_f.esp = argc;
     in_f.esp -= 4;
     *(int *) in_f.esp = 0;
-    thread_current ()->parent->execute = true;
+    exec_status(true);
     sema_up (&thread_current ()->parent->parent_sema);
   }
 
-  /* If load failed, quit. */
   else{
-    thread_current ()->parent->execute = false;
+    exec_status(false);
     sema_up (&thread_current ()->parent->parent_sema);
     thread_exit ();
   }
@@ -150,11 +148,10 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
-  struct list *l = &thread_current()->childs;
-  struct list_elem *temp;
-  temp = list_begin (l);
+  struct list *childs = &thread_current()->childs;
+  struct list_elem *temp = list_begin (childs);
   struct thread *temp2 = NULL;
-  struct list_elem * end = list_end (l);
+  struct list_elem * end = list_end (childs);
   
   while (temp != end)
   {
@@ -168,7 +165,7 @@ process_wait (tid_t child_tid UNUSED)
     if ((temp2->tid == child_tid) && (temp2->working)) return -1;
     temp = list_next (temp);
   }
-  if (temp == list_end (l)) return -1;
+  if (temp == list_end (childs)) return -1;
   list_remove (temp);
   int exit = temp2->store_exit;
   return exit;
@@ -312,9 +309,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
     printf ("load: %s: open failed\n", file_name);
     goto done;
   }
-  /* Deny write for the opened file by calling file deny write */
-  file_deny_write(file);
-  t->file_owned = file;
+
+  file_deny_write(filesys_open (file_name));
+  t->file_owned = filesys_open (file_name);
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
