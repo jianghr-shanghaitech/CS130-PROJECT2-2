@@ -25,8 +25,8 @@ bool create (const char *file, unsigned initial_size); /* syscall create */
 bool remove (const char *file); /* syscall remove */
 int open (const char *file);/* syscall open */
 int wait (int pid); /*syscall wait */
-void filesize(struct intr_frame* f);/* syscall filesize */
-void read(struct intr_frame* f);  /* syscall read */
+int filesize (int fd);/* syscall filesize */
+int read (int fd, void *buffer, unsigned size);  /* syscall read */
 void write(struct intr_frame* f); /* syscall write */
 void seek(struct intr_frame* f); /* syscall seek */
 void tell(struct intr_frame* f); /* syscall tell */
@@ -69,15 +69,29 @@ syscall_init (void)
   syscalls[SYS_FILESIZE] = &filesize;
 }
 
-static int get_user (const uint8_t *uaddr)
+/* Reads a byte at user virtual address UADDR.
+   UADDR must be below PHYS_BASE.
+   Returns the byte value if successful, -1 if a segfault
+   occurred. */
+static int
+get_user (const uint8_t *uaddr)
 {
-  // ensure uaddr under PHYS_BASE
-  if (! ((void*)uaddr < PHYS_BASE)) {
-    return -1;
-  }
   int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:" : "=&a" (result) : "m" (*uaddr));
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+       : "=&a" (result) : "m" (*uaddr));
   return result;
+}
+ 
+/* Writes BYTE to user address UDST.
+   UDST must be below PHYS_BASE.
+   Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+  asm ("movl $1f, %0; movb %b2, %1; 1:"
+       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+  return error_code != -1;
 }
 
 void * ptr2(const void *vaddr)
@@ -150,9 +164,29 @@ int open (const char *file)
 {
   check_uadd(file);
   lock_acquire(&syscall_lock);
-  struct file* file_opened;
   struct file_desc* fd = palloc_get_page(0);
   if (!fd) return -1;
+  struct file* file_opened = filesys_open(file);
+  if (!file_opened) {
+    palloc_free_page (fd);
+    lock_release (&syscall_lock);
+    return -1;
+  }
+
+  struct thread * t = thread_current();
+  if (file_opened)
+  {
+    struct thread_file *thread_file_temp = malloc(sizeof(struct thread_file));
+    thread_file_temp->fd = t->file_fd++;
+    thread_file_temp->file = file_opened;
+    list_push_back (&t->files, &thread_file_temp->file_elem);
+    lock_release (&syscall_lock);
+    return thread_file_temp->fd;;
+  }
+  else{
+    lock_release (&syscall_lock);
+    return -1;
+  }
 }
 void 
 write (struct intr_frame* f)
@@ -231,21 +265,18 @@ close (struct intr_frame* f)
 }
 
 
-void 
-filesize (struct intr_frame* f){
-  uint32_t *user_ptr = f->esp;
-  ptr2 (f->esp + 1);
-  *user_ptr++;
-  struct thread_file * file_temp = find_file_id (*user_ptr);
+int filesize (int fd){
+  struct thread_file * file_temp = find_file_id (fd);
   auto file = file_temp->file;
+  int rt;
   if (file_temp)
   {
     acquire_lock_f ();
-    f->eax = file_length (file);
+    rt = file_length (file);
     release_lock_f ();
-    return;
-  } 
-  f->eax = -1;
+  }
+  else rt = -1;
+  return rt;
 }
 
 bool 
@@ -261,36 +292,38 @@ is_valid_pointer (void* esp,uint8_t argc){
 }
 
 
-void 
-read (struct intr_frame* f)
+int read (int fd, void *buffer, unsigned size)
 {
-  uint32_t *user_ptr = f->esp;
-  *user_ptr++;
-  int fd = *user_ptr;
-  int i;
-  uint8_t * buffer = (uint8_t*)*(user_ptr+1);
-  off_t size = *(user_ptr+2);
-  if (!is_valid_pointer (buffer, 1) || !is_valid_pointer (buffer + size,1)){
-      thread_current()->exit_status = -1;
-  thread_exit ();
+  int i, rt;
+  /* check address bellow PHYS_BASE*/
+  check_uadd((uint8_t*)buffer);
+  check_uadd((uint8_t*)buffer + size);
+  /* check address overflow the page*/
+  if(pagedir_get_page (thread_current()->pagedir, buffer)==NULL || pagedir_get_page (thread_current()->pagedir, buffer + size)==NULL){
+    invalid_exit();
   }
-  if (!fd) 
-  {
-    for (i = 0; i < size; i++)
-      buffer[i] = input_getc();
-    f->eax = size;
-    return;
+  lock_acquire(&syscall_lock);
+  if(fd == 0){ // stdin
+    for(i = 0; i < size; ++i) {
+      int temp = put_user(buffer + i, input_getc());
+      if(!temp) {
+        lock_release (&syscall_lock);
+        invalid_exit(); // segfault
+      }
+      rt = size;
+    }
   }
-  struct thread_file * thread_file_temp = find_file_id (*user_ptr);
-  auto file = thread_file_temp->file;
-  if (thread_file_temp)
-  {
-    acquire_lock_f ();
-    f->eax = file_read (file, buffer, size);
-    release_lock_f ();
-    return;
-  } 
-  f->eax = -1;
+  else{
+    struct thread_file * thread_file_temp = find_file_id (fd);
+    auto file = thread_file_temp->file;
+    if (thread_file_temp)
+    {
+      rt = file_read (file, buffer, size);
+    }
+    else rt = -1;
+  }
+  lock_release(&syscall_lock);
+  return rt;
 }
 
 struct thread_file * 
@@ -372,8 +405,24 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax = open(file);
       break;
     }
-    // case SYS_FILESIZE:
-    // case SYS_READ:
+    
+    case SYS_FILESIZE:{
+      int fd;
+      read_user(f->esp + 4, &fd, sizeof(fd));
+      f->eax = filesize(fd);
+      break;
+    }
+    
+    case SYS_READ:{
+      int fd;
+      void *buffer;
+      unsigned size;
+      read_user(f->esp + 4, &fd, sizeof(fd));
+      read_user(f->esp + 8, &buffer, sizeof(buffer));
+      read_user(f->esp + 12, &size, sizeof(size));
+      f->eax = read(fd, buffer, size);
+      break;
+    }
     // case SYS_WRITE:
     // case SYS_SEEK:
     // case SYS_TELL:
