@@ -19,6 +19,19 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+struct intr_frame set_inf(struct intr_frame in_f)
+{
+  memset (&in_f, 0, sizeof in_f);
+  in_f.gs = SEL_UDSEG;
+  in_f.fs = SEL_UDSEG;
+  in_f.es = SEL_UDSEG;
+  in_f.ds = SEL_UDSEG;
+  in_f.ss = SEL_UDSEG;
+  in_f.cs = SEL_UCSEG;
+  in_f.eflags = FLAG_IF | FLAG_MBS;
+  return in_f;
+}
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -30,28 +43,30 @@ tid_t
 process_execute (const char *file_name)
 {
   tid_t tid;
+  int filesize = strlen(file_name)+1;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  char *fn_copy = malloc(strlen(file_name)+1);
-  char *fn_copy2 = malloc(strlen(file_name)+1);
-  strlcpy (fn_copy, file_name, strlen(file_name)+1);
-  strlcpy (fn_copy2, file_name, strlen(file_name)+1);
+  char *copy_temp = malloc(filesize);
+  char *copy_temp2 = malloc(filesize);
+  strlcpy (copy_temp, file_name, filesize);
+  strlcpy (copy_temp2, file_name, filesize);
 
 
   /* Create a new thread to execute FILE_NAME. */
   char * save_ptr;
-  fn_copy2 = strtok_r (fn_copy2, " ", &save_ptr);
-  tid = thread_create (fn_copy2, PRI_DEFAULT, start_process, fn_copy);
-  free (fn_copy2);
+  copy_temp2 = strtok_r (copy_temp2, " ", &save_ptr);
 
-  if (tid == TID_ERROR){
-    free (fn_copy);
-    return tid;
+  tid = thread_create (copy_temp2, PRI_DEFAULT, start_process, copy_temp);
+  free (copy_temp2);
+
+  if (tid == TID_ERROR)
+  {
+    free (copy_temp);
+    return -1;
   }
 
-  /* parent_sema down the parent process, waiting for child */
   sema_down(&thread_current()->parent_sema);
-  if (!thread_current()->execute) return TID_ERROR;
+  if (!thread_current()->execute) return -1;
 
   return tid;
 }
@@ -62,59 +77,49 @@ static void
 start_process (void *file_name_)
 {
   char *file_name = file_name_;
-  struct intr_frame if_;
+  struct intr_frame in_f;
   bool execute;
+  int filesize = strlen(file_name)+1;
 
-  char *fn_copy=malloc(strlen(file_name)+1);
-  strlcpy(fn_copy,file_name,strlen(file_name)+1);
+  char *copy_temp=malloc(filesize);
+  strlcpy(copy_temp,file_name,filesize);
 
-  /* Initialize interrupt frame and load executable. */
-  memset (&if_, 0, sizeof if_);
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-  if_.cs = SEL_UCSEG;
-  if_.eflags = FLAG_IF | FLAG_MBS;
+  in_f = set_inf(in_f);
 
   char *temp, *save_ptr;
   file_name = strtok_r (file_name, " ", &save_ptr);
-  execute = load (file_name, &if_.eip, &if_.esp);
+  execute = load (file_name, &in_f.eip, &in_f.esp);
 
   if (execute){
-    /* Our implementation for Task 1:
-      Calculate the number of parameters and the specification of parameters */
     int argc = 0;
-    /* The number of parameters can't be more than 50 in the test case */
     int argv[50];
-    temp = fn_copy;
-    // parameters extract
+    temp = copy_temp;
     while(NULL != (temp = strtok_r (temp, " ", &save_ptr))){
-      if_.esp -= (strlen(temp)+1);
-      memcpy (if_.esp, temp, strlen(temp)+1);
-      argv[argc++] = (int) if_.esp;
+      in_f.esp -= (strlen(temp)+1);
+      memcpy (in_f.esp, temp, strlen(temp)+1);
+      argv[argc++] = (int) in_f.esp;
       temp = NULL;
     }
-    if_.esp = (int) if_.esp & 0xfffffffc; // ensure esp % 4 == 0
-    if_.esp -= 4;
-    *(int *) if_.esp = 0;
-    // record parameter address
+    in_f.esp = (int) in_f.esp & 0xfffffffc; // ensure esp % 4 == 0
+    in_f.esp -= 4;
+    *(int *) in_f.esp = 0;
     for (int i = argc - 1; i >= 0; i--)
     {
-      if_.esp -= 4;
-      *(int *) if_.esp = argv[i];
+      in_f.esp -= 4;
+      *(int *) in_f.esp = argv[i];
     }
-    if_.esp -= 4;
-    *(int *) if_.esp = (int) if_.esp + 4;
-    if_.esp -= 4;
-    *(int *) if_.esp = argc;
-    if_.esp -= 4;
-    *(int *) if_.esp = 0;
-    /* Record the exec_status of the parent thread's execute and parent_sema up parent's semaphore */
+    in_f.esp -= 4;
+    *(int *) in_f.esp = (int) in_f.esp + 4;
+    in_f.esp -= 4;
+    *(int *) in_f.esp = argc;
+    in_f.esp -= 4;
+    *(int *) in_f.esp = 0;
     thread_current ()->parent->execute = true;
     sema_up (&thread_current ()->parent->parent_sema);
   }
 
   /* If load failed, quit. */
   else{
-    /* Record the exec_status of the parent thread's execute and parent_sema up parent's semaphore */
     thread_current ()->parent->execute = false;
     sema_up (&thread_current ()->parent->parent_sema);
     thread_exit ();
@@ -127,7 +132,7 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&in_f) : "memory");
   NOT_REACHED ();
 }
 
@@ -141,42 +146,32 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 
-/* Our Implementation
-Modify Process wait to satisfy some special test in Task1 and also some bugs in other Tasks */
-
-
 
 int
 process_wait (tid_t child_tid UNUSED)
 {
-  /* Find the child's ID that the current thread waits for and parent_sema down the child's semaphore */
   struct list *l = &thread_current()->childs;
   struct list_elem *temp;
   temp = list_begin (l);
   struct thread *temp2 = NULL;
-  while (temp != list_end (l))
+  struct list_elem * end = list_end (l);
+  
+  while (temp != end)
   {
     temp2 = list_entry (temp, struct thread, child_elem);
-    if (temp2->tid == child_tid)
+    if ((temp2->tid == child_tid) && (!temp2->working))
     {
-      if (!temp2->working)
-      {
-        temp2->working = true;
-        sema_down (&temp2->parent_sema);
-        break;
-      } 
-      else 
-      {
-        return -1;
-      }
+      temp2->working = true;
+      sema_down (&temp2->parent_sema);
+      break;
     }
+    if ((temp2->tid == child_tid) && (temp2->working)) return -1;
     temp = list_next (temp);
   }
-  if (temp == list_end (l)) {
-    return -1;
-  }
+  if (temp == list_end (l)) return -1;
   list_remove (temp);
-  return temp2->store_exit;
+  int exit = temp2->store_exit;
+  return exit;
 }
 
 /* Free the current process's resources. */
