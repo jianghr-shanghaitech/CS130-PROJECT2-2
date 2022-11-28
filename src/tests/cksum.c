@@ -72,7 +72,7 @@ cksum (const void *b_, size_t n)
     }
   while (n != 0)
     {
-      unsigned char c = n;
+      unsigned char c = (unsigned char) n;
       n >>= 8;
       s = (s << 8) ^ crctab[(s >> 24) ^ c];
     }

@@ -10,8 +10,7 @@ introduces you to a few of them.
 * Function and Parameter Attributes::  
 * Backtraces::                  
 * GDB::                         
-* Triple Faults::               
-* Modifying Bochs::             
+* Triple Faults::                        
 * Debugging Tips::              
 @end menu
 
@@ -126,9 +125,9 @@ calling function may not appear in a backtrace at all.  Similarly, when
 function A calls another function B that never returns, the compiler may
 optimize such that an unrelated function C appears in the backtrace
 instead of A.  Function C is simply the function that happens to be in
-memory just after A.  In the threads project, this is commonly seen in
+memory just after A.  In the threads task, this is commonly seen in
 backtraces for test failures; see @ref{The pass function fails, ,
-@func{pass} Fails}, for more information.
+@func{pass} fails}, for more information.
 
 @menu
 * Backtrace Example::           
@@ -138,8 +137,7 @@ backtraces for test failures; see @ref{The pass function fails, ,
 @subsection Example
 
 Here's an example.  Suppose that Pintos printed out this following call
-stack, which is taken from an actual Pintos submission for the file
-system project:
+stack, which is taken from an actual Pintos submission:
 
 @example
 Call stack: 0xc0106eff 0xc01102fb 0xc010dc22 0xc010cf67 0xc0102319
@@ -274,8 +272,7 @@ First, start Pintos with the @option{--gdb} option, e.g.@:
 the same machine and
 use @command{pintos-gdb} to invoke GDB on
 @file{kernel.o}:@footnote{@command{pintos-gdb} is a wrapper around
-@command{gdb} (80@var{x}86) or @command{i386-elf-gdb} (SPARC) that loads
-the Pintos macros at startup.}
+@command{gdb} (80@var{x}86) that loads the Pintos macros at startup.}
 @example
 pintos-gdb kernel.o
 @end example
@@ -351,8 +348,8 @@ Attach debugger to a waiting pintos process on the same machine.
 Shorthand for @code{target remote localhost:1234}.
 @end deffn
 
-@deffn {GDB Macro} dumplist &list type element
-Prints the elements of @var{list}, which should be a @code{struct} list
+@deffn {GDB Macro} dumplist list type element
+Prints the elements of @var{list}, which must be passed by reference and should be a @code{struct list}
 that contains elements of the given @var{type} (without the word
 @code{struct}) in which @var{element} is the @struct{list_elem} member
 that links the elements.
@@ -371,10 +368,8 @@ provided you know where its kernel stack page is located.
 @end deffn
 
 @deffn {GDB Macro} btthreadlist list element
-Shows the backtraces of all threads in @var{list}, the @struct{list} in
-which the threads are kept.  Specify @var{element} as the
-@struct{list_elem} field used inside @struct{thread} to link the threads
-together.
+Shows the backtraces of all threads in @var{list}, whcih must be passed by referecen and is the @struct{list} in which the threads are kept.  
+Specify @var{element} as the @struct{list_elem} field used inside @struct{thread} to link the threads together.
 
 Example: @code{btthreadlist &all_list allelem} shows the backtraces of
 all threads contained in @code{struct list all_list}, linked together by
@@ -383,29 +378,7 @@ are stuck when a deadlock occurs.  Please see the example scenario below.
 @end deffn
 
 @deffn {GDB Macro} btthreadall
-Short-hand for @code{btthreadlist &all_list allelem}.
-@end deffn
-
-@deffn {GDB Macro} btpagefault
-Print a backtrace of the current thread after a page fault exception.
-Normally, when a page fault exception occurs, GDB will stop
-with a message that might say:@footnote{To be precise, GDB will stop
-only when running under Bochs.  When running under QEMU, you must
-set a breakpoint in the @code{page_fault} function to stop execution 
-when a page fault occurs. In that case, the @code{btpagefault} macro is
-unnecessary.}
-
-@example
-Program received signal 0, Signal 0.
-0xc0102320 in intr0e_stub ()
-@end example
-
-In that case, the @code{bt} command might not give a useful
-backtrace.  Use @code{btpagefault} instead.
-
-You may also use @code{btpagefault} for page faults that occur in a user
-process.  In this case, you may wish to also load the user program's
-symbol table using the @code{loadusersymbols} macro, as described above.
+Short-hand for @code{btthreadlist all_list allelem}.
 @end deffn
 
 @deffn {GDB Macro} hook-stop
@@ -421,14 +394,14 @@ pintos-debug: a page fault exception occurred in user mode
 pintos-debug: hit 'c' to continue, or 's' to step to intr_handler
 @end example
 
-In Project 2, a page fault in a user process leads to the termination of
+In Task 2, a page fault in a user process leads to the termination of
 the process.  You should expect those page faults to occur in the
 robustness tests where we test that your kernel properly terminates
 processes that try to access invalid addresses.  To debug those, set a
 break point in @func{page_fault} in @file{exception.c}, which you will
 need to modify accordingly.
 
-In Project 3, a page fault in a user process no longer automatically
+In Task 3, a page fault in a user process no longer automatically
 leads to the termination of a process.  Instead, it may require reading in
 data for the page the process was trying to access, either
 because it was swapped out or because this is the first time it's
@@ -441,11 +414,10 @@ In this case, @code{hook-stop} will print this message:
 @example
 pintos-debug: a page fault occurred in kernel mode
 @end example
-followed by the output of the @code{btpagefault} command.
 
-Before Project 3, a page fault exception in kernel code is always a bug
+Before Task 3, a page fault exception in kernel code is always a bug
 in your kernel, because your kernel should never crash.  Starting with
-Project 3, the situation will change if you use the @func{get_user} and
+Task 3, the situation will change if you use the @func{get_user} and
 @func{put_user} strategy to verify user memory accesses
 (@pxref{Accessing User Memory}).
 
@@ -460,45 +432,36 @@ Project 3, the situation will change if you use the @func{get_user} and
 @node Example GDB Session
 @subsection Example GDB Session
 
-This section narrates a sample GDB session, provided by Godmar Back.
-This example illustrates how one might debug a Project 1 solution in
+This section narrates a sample GDB session, provided by Godmar Back 
+(modified by Mark Rutland and Feroz Abdul Salam).
+This example illustrates how one might debug a Task 1 solution in
 which occasionally a thread that calls @func{timer_sleep} is not woken
 up.  With this bug, tests such as @code{mlfqs_load_1} get stuck.
 
-This session was captured with a slightly older version of Bochs and the
-GDB macros for Pintos, so it looks slightly different than it would now.
 Program output is shown in normal type, user input in @strong{strong}
 type.
 
 First, I start Pintos:
 
 @smallexample
-$ @strong{pintos -v --gdb -- -q -mlfqs run mlfqs-load-1}
-Writing command line to /tmp/gDAlqTB5Uf.dsk...
-bochs -q
-========================================================================
-                       Bochs x86 Emulator 2.2.5
-             Build from CVS snapshot on December 30, 2005
-========================================================================
-00000000000i[     ] reading configuration from bochsrc.txt
-00000000000i[     ] Enabled gdbstub
-00000000000i[     ] installing nogui module as the Bochs GUI
-00000000000i[     ] using log file bochsout.txt
-Waiting for gdb connection on localhost:1234
+@code{$ pintos -v --qemu --gdb -- -q -mlfqs run mlfqs-load-1}
+
+qemu -hda /tmp/Qu7Ex4UbFv.dsk -m 4 -net none -nographic -s -S
+Could not open '/dev/kqemu' - QEMU acceleration layer not activated: No such file or directory
+
 @end smallexample
 
 @noindent Then, I open a second window on the same machine and start GDB:
 
 @smallexample
 $ @strong{pintos-gdb kernel.o}
-GNU gdb Red Hat Linux (6.3.0.0-1.84rh)
-Copyright 2004 Free Software Foundation, Inc.
-GDB is free software, covered by the GNU General Public License, and you are
-welcome to change it and/or distribute copies of it under certain conditions.
-Type "show copying" to see the conditions.
-There is absolutely no warranty for GDB.  Type "show warranty" for details.
-This GDB was configured as "i386-redhat-linux-gnu"...
-Using host libthread_db library "/lib/libthread_db.so.1".
+GNU gdb 6.8-debian
+Copyright (C) 2008 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"
+and "show warranty" for details.
+This GDB was configured as "i486-linux-gnu"...
 @end smallexample
 
 @noindent Then, I tell GDB to attach to the waiting Pintos emulator:
@@ -511,12 +474,9 @@ Reply contains invalid hex digit 78
 @end smallexample
 
 @noindent Now I tell Pintos to run by executing @code{c} (short for
-@code{continue}) twice:
+@code{continue}):
 
 @smallexample
-(gdb) @strong{c}
-Continuing.
-Reply contains invalid hex digit 78
 (gdb) @strong{c}
 Continuing.
 @end smallexample
@@ -524,17 +484,17 @@ Continuing.
 @noindent Now Pintos will continue and output:
 
 @smallexample
-Pintos booting with 4,096 kB RAM...
+PiLo hda1
+Loading.........
 Kernel command line: -q -mlfqs run mlfqs-load-1
-374 pages available in kernel pool.
-373 pages available in user pool.
-Calibrating timer...  102,400 loops/s.
+Pintos booting with 4,096 kB RAM...
+383 pages available in kernel pool.
+383 pages available in user pool.
+Calibrating timer...  104,755,200 loops/s.
 Boot complete.
 Executing 'mlfqs-load-1':
 (mlfqs-load-1) begin
 (mlfqs-load-1) spinning for up to 45 seconds, please wait...
-(mlfqs-load-1) load average rose to 0.5 after 42 seconds
-(mlfqs-load-1) sleeping for another 10 seconds, please wait...
 @end smallexample
 
 @noindent 
@@ -641,7 +601,7 @@ command.
 @subsection FAQ
 
 @table @asis
-@item GDB can't connect to Bochs.
+@item GDB can't connect to QEMU (Error: localhost:1234: Connection refused)
 
 If the @command{target remote} command fails, then make sure that both
 GDB and @command{pintos} are running on the same machine by
@@ -672,15 +632,6 @@ subprocess.  Type @kbd{M-x gdb} and enter your @command{pintos-gdb}
 command at the prompt.  The Emacs manual has information on how to use
 its debugging features in a section titled ``Debuggers.''
 
-@item GDB is doing something weird.
-
-If you notice strange behavior while using GDB, there
-are three possibilities: a bug in your
-modified Pintos, a bug in Bochs's
-interface to GDB or in GDB itself, or
-a bug in the original Pintos code.  The first and second
-are quite likely, and you should seriously consider both.  We hope
-that the third is less likely, but it is also possible.
 @end table
 
 @node Triple Faults
@@ -698,15 +649,7 @@ situation, you might not be able to use @func{printf} for debugging,
 because the reboots might be happening even before everything needed for
 @func{printf} is initialized.
 
-There are at least two ways to debug triple faults.  First, you can run
-Pintos in Bochs under GDB (@pxref{GDB}).  If Bochs has been built
-properly for Pintos, a triple fault under GDB will cause it to print the
-message ``Triple fault: stopping for gdb'' on the console and break into
-the debugger.  (If Bochs is not running under GDB, a triple fault will
-still cause it to reboot.)  You can then inspect where Pintos stopped,
-which is where the triple fault occurred.
-
-Another option is what I call ``debugging by infinite loop.''
+Currently, the only option is ``debugging by infinite loop.''
 Pick a place in the Pintos code, insert the infinite loop
 @code{for (;;);} there, and recompile and run.  There are two likely
 possibilities:
@@ -729,38 +672,6 @@ If you move around the infinite loop in a ``binary search'' fashion, you
 can use this technique to pin down the exact spot that everything goes
 wrong.  It should only take a few minutes at most.
 
-@node Modifying Bochs
-@section Modifying Bochs
-
-An advanced debugging technique is to modify and recompile the
-simulator.  This proves useful when the simulated hardware has more
-information than it makes available to the OS.  For example, page
-faults have a long list of potential causes, but the hardware does not
-report to the OS exactly which one is the particular cause.
-Furthermore, a bug in the kernel's handling of page faults can easily
-lead to recursive faults, but a ``triple fault'' will cause the CPU to
-reset itself, which is hardly conducive to debugging.
-
-In a case like this, you might appreciate being able to make Bochs
-print out more debug information, such as the exact type of fault that
-occurred.  It's not very hard.  You start by retrieving the source
-code for Bochs 2.2.6 from @uref{http://bochs.sourceforge.net} and
-saving the file @file{bochs-2.2.6.tar.gz} into a directory.  
-The script @file{pintos/src/misc/bochs-2.2.6-build.sh}
-applies a number of patches contained in @file{pintos/src/misc}
-to the Bochs tree, then builds Bochs and installs it in a directory
-of your choice.
-Run this script without arguments to learn usage instructions.
-To use your @file{bochs} binary with @command{pintos},
-put it in your @env{PATH}, and make sure that it is earlier than
-@file{@value{localpintosbindir}/bochs}.
-
-Of course, to get any good out of this you'll have to actually modify
-Bochs.  Instructions for doing this are firmly out of the scope of
-this document.  However, if you want to debug page faults as suggested
-above, a good place to start adding @func{printf}s is
-@func{BX_CPU_C::dtranslate_linear} in @file{cpu/paging.cc}.
-
 @node Debugging Tips
 @section Tips
 
@@ -773,9 +684,3 @@ already been freed.  Also, byte @t{0xcc} is the CPU opcode for ``invoke
 interrupt 3,'' so if you see an error like @code{Interrupt 0x03 (#BP
 Breakpoint Exception)}, then Pintos tried to execute code in a freed page or
 block.
-
-An assertion failure on the expression @code{sec_no < d->capacity}
-indicates that Pintos tried to access a file through an inode that has
-been closed and freed.  Freeing an inode clears its starting sector
-number to @t{0xcccccccc}, which is not a valid sector number for disks
-smaller than about 1.6 TB.

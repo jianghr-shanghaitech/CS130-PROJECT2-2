@@ -119,6 +119,11 @@ test_mlfqs_load_60 (void)
   ASSERT (thread_mlfqs);
 
   start_time = timer_ticks ();
+
+  /* align start_time to TIMER_FREQ to ensure sleeping threads wake up at the 
+     tick on which the load average is recalculated */
+  start_time = ((start_time / TIMER_FREQ) + 1) * TIMER_FREQ;
+
   msg ("Starting %d niced load threads...", THREAD_CNT);
   for (i = 0; i < THREAD_CNT; i++) 
     {

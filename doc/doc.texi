@@ -1,5 +1,5 @@
-@node Project Documentation
-@appendix Project Documentation
+@node Task Documentation
+@appendix Task Documentation
 
 This chapter presents a sample assignment and a filled-in design
 document for one possible implementation.  Its purpose is to give you an

@@ -27,7 +27,7 @@ test_main (void)
   random_bytes (buf, sizeof buf);
 
   for (i = 0; i < BLOCK_CNT; i++)
-    order[i] = i;
+    order[i] = (int) i;
 
   CHECK (create (file_name, TEST_SIZE), "create \"%s\"", file_name);
   CHECK ((fd = open (file_name)) > 1, "open \"%s\"", file_name);
@@ -36,7 +36,7 @@ test_main (void)
   shuffle (order, BLOCK_CNT, sizeof *order);
   for (i = 0; i < BLOCK_CNT; i++) 
     {
-      size_t ofs = BLOCK_SIZE * order[i];
+      size_t ofs = BLOCK_SIZE * (unsigned) order[i];
       seek (fd, ofs);
       if (write (fd, buf + ofs, BLOCK_SIZE) != BLOCK_SIZE)
         fail ("write %d bytes at offset %zu failed", (int) BLOCK_SIZE, ofs);
@@ -47,7 +47,7 @@ test_main (void)
   for (i = 0; i < BLOCK_CNT; i++) 
     {
       char block[BLOCK_SIZE];
-      size_t ofs = BLOCK_SIZE * order[i];
+      size_t ofs = BLOCK_SIZE * (unsigned) order[i];
       seek (fd, ofs);
       if (read (fd, block, BLOCK_SIZE) != BLOCK_SIZE)
         fail ("read %d bytes at offset %zu failed", (int) BLOCK_SIZE, ofs);

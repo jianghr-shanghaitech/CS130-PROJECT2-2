@@ -274,7 +274,7 @@ pic_end_of_interrupt (int irq)
     outb (0xa0, 0x20);
 }
 
-/* Creates an gate that invokes FUNCTION.
+/* Creates a gate that invokes FUNCTION.
 
    The gate has descriptor privilege level DPL, meaning that it
    can be invoked intentionally when the processor is in the DPL

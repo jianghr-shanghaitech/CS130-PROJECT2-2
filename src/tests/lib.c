@@ -115,7 +115,7 @@ check_file_handle (int fd,
   /* Warn about file of wrong size.  Don't fail yet because we
      may still be able to get more information by reading the
      file. */
-  file_size = filesize (fd);
+  file_size = (size_t) filesize (fd);
   if (file_size != size)
     msg ("size of %s (%zu) differs from expected (%zu)",
           file_name, file_size, size);
@@ -130,7 +130,7 @@ check_file_handle (int fd,
       if (block_size > sizeof block)
         block_size = sizeof block;
 
-      ret_val = read (fd, block, block_size);
+      ret_val = (size_t) read (fd, block, block_size);
       if (ret_val != block_size)
         fail ("read of %zu bytes at offset %zu in \"%s\" returned %zu",
               block_size, ofs, file_name, ret_val);

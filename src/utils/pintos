@@ -12,27 +12,26 @@ BEGIN { my $self = $0; $self =~ s%/+[^/]*$%%; require "$self/Pintos.pm"; }
 
 # Command-line options.
 our ($start_time) = time ();
-our ($sim);			# Simulator: bochs, qemu, or player.
-our ($debug) = "none";		# Debugger: none, monitor, or gdb.
+our ($sim);				# Simulator: bochs, qemu, or player.
+our ($debug) = "none";	# Debugger: none, monitor, or gdb.
 our ($mem) = 4;			# Physical RAM in MB.
 our ($serial) = 1;		# Use serial port for input and output?
-our ($vga);			# VGA output: window, terminal, or none.
+our ($vga);				# VGA output: window, terminal, or none.
 our ($jitter);			# Seed for random timer interrupts, if set.
 our ($realtime);		# Synchronize timer interrupts with real time?
 our ($timeout);			# Maximum runtime in seconds, if set.
-our ($kill_on_failure);		# Abort quickly on test failure?
+our ($kill_on_failure);	# Abort quickly on test failure?
 our (@puts);			# Files to copy into the VM.
 our (@gets);			# Files to copy out of the VM.
 our ($as_ref);			# Reference to last addition to @gets or @puts.
 our (@kernel_args);		# Arguments to pass to kernel.
 our (%parts);			# Partitions.
 our ($make_disk);		# Name of disk to create.
-our ($tmp_disk) = 1;		# Delete $make_disk after run?
+our ($tmp_disk) = 1;	# Delete $make_disk after run?
 our (@disks);			# Extra disk images to pass to simulator.
 our ($loader_fn);		# Bootstrap loader.
 our (%geometry);		# IDE disk geometry.
 our ($align);			# Partition alignment.
-our ($gdb_port) = $ENV{"GDB_PORT"} || "1234"; # Port to listen on for GDB
 
 parse_command_line ();
 prepare_scratch_disk ();
@@ -101,7 +100,7 @@ sub parse_command_line {
 	  or exit 1;
     }
 
-    $sim = "bochs" if !defined $sim;
+    $sim = "qemu" if !defined $sim;
     $debug = "none" if !defined $debug;
     $vga = exists ($ENV{DISPLAY}) ? "window" : "none" if !defined $vga;
 
@@ -114,8 +113,6 @@ sub parse_command_line {
     $align = "bochs",
       print STDERR "warning: setting --align=bochs for Bochs support\n"
 	if $sim eq 'bochs' && defined ($align) && $align eq 'none';
-
-    $kill_on_failure = 0;
 }
 
 # usage($exitcode).
@@ -129,8 +126,8 @@ Usage: pintos [OPTION...] -- [ARGUMENT...]
 where each OPTION is one of the following options
   and each ARGUMENT is passed to Pintos kernel verbatim.
 Simulator selection:
-  --bochs                  (default) Use Bochs as simulator
-  --qemu                   Use QEMU as simulator
+  --qemu                   (default) Use QEMU as simulator
+  --bochs                  Use Bochs as simulator
   --player                 Use VMware Player as simulator
 Debugger selection:
   --no-debug               (default) No debugger
@@ -274,15 +271,15 @@ sub find_disks {
     }
 
     # Warn about (potentially) missing partitions.
-    if (my ($project) = `pwd` =~ /\b(threads|userprog|vm|filesys)\b/) {
-	if ((grep ($project eq $_, qw (userprog vm filesys)))
+    if (my ($task) = `pwd` =~ /\b(threads|userprog|vm|filesys)\b/) {
+	if ((grep ($task eq $_, qw (userprog vm filesys)))
 	    && !defined $parts{FILESYS}) {
-	    print STDERR "warning: it looks like you're running the $project ";
-	    print STDERR "project, but no file system partition is present\n";
+	    print STDERR "warning: it looks like you're running the $task ";
+	    print STDERR "task, but no file system partition is present\n";
 	}
-	if ($project eq 'vm' && !defined $parts{SWAP}) {
-	    print STDERR "warning: it looks like you're running the $project ";
-	    print STDERR "project, but no swap partition is present\n";
+	if ($task eq 'vm' && !defined $parts{SWAP}) {
+	    print STDERR "warning: it looks like you're running the $task ";
+	    print STDERR "task, but no swap partition is present\n";
 	}
     }
 
@@ -564,12 +561,9 @@ cpu: ips=1000000
 megs: $mem
 log: bochsout.txt
 panic: action=fatal
-# For older bochs:
-#user_shortcut: keys=ctrlaltdel
-# For more recent bochs:
-keyboard: user_shortcut=ctrl-alt-del
+user_shortcut: keys=ctrlaltdel
 EOF
-    print BOCHSRC "gdbstub: enabled=1, port=$gdb_port\n" if $debug eq 'gdb';
+    print BOCHSRC "gdbstub: enabled=1\n" if $debug eq 'gdb';
     print BOCHSRC "clock: sync=", $realtime ? 'realtime' : 'none',
       ", time0=0\n";
     print BOCHSRC "ata1: enabled=1, ioaddr1=0x170, ioaddr2=0x370, irq=15\n"
@@ -625,25 +619,16 @@ sub run_qemu {
     print "warning: qemu doesn't support jitter\n"
       if defined $jitter;
     my (@cmd) = ('qemu-system-i386');
-    push (@cmd, '-device', 'isa-debug-exit');
-
-    my ($i);
-    for ($i = 0; $i < 4; $i++) {
-	if (defined $disks[$i]) {
-	    push (@cmd, '-drive');
-	    push (@cmd, "file=$disks[$i],format=raw,index=$i,media=disk");
-	}
-    }
-#    push (@cmd, '-hda', $disks[0]) if defined $disks[0];
-#    push (@cmd, '-hdb', $disks[1]) if defined $disks[1];
-#    push (@cmd, '-hdc', $disks[2]) if defined $disks[2];
-#    push (@cmd, '-hdd', $disks[3]) if defined $disks[3];
+    push (@cmd, '-drive', 'file='.$disks[0].',index=0,media=disk,format=raw') if defined $disks[0];
+    push (@cmd, '-drive', 'file='.$disks[1].',index=1,media=disk,format=raw') if defined $disks[1];
+    push (@cmd, '-drive', 'file='.$disks[2].',index=2,media=disk,format=raw') if defined $disks[2];
+    push (@cmd, '-drive', 'file='.$disks[3].',index=3,media=disk,format=raw') if defined $disks[3];
     push (@cmd, '-m', $mem);
     push (@cmd, '-net', 'none');
     push (@cmd, '-nographic') if $vga eq 'none';
     push (@cmd, '-serial', 'stdio') if $serial && $vga ne 'none';
     push (@cmd, '-S') if $debug eq 'monitor';
-    push (@cmd, '-gdb', "tcp::$gdb_port", '-S') if $debug eq 'gdb';
+    push (@cmd, '-s', '-S') if $debug eq 'gdb';
     push (@cmd, '-monitor', 'null') if $vga eq 'none' && $debug eq 'none';
     run_command (@cmd);
 }
@@ -825,7 +810,6 @@ sub xsystem {
 	local $SIG{INT} = sub { relay_signal ($pid, "INT", $cleanup); };
 	local $SIG{TERM} = sub { relay_signal ($pid, "TERM", $cleanup); };
 	alarm ($timeout * get_load_average () + 1) if defined ($timeout);
-
 	if ($kill_on_failure) {
 	    # Filter output.
 	    my ($buf) = "";
@@ -840,8 +824,8 @@ sub xsystem {
 
 		# Read and print out pipe data.
 		my ($len) = length ($buf);
-		my ($n_read) = sysread ($in, $buf, 4096, $len);
-		waitpid ($pid, 0), last if !defined ($n_read) || $n_read <= 0;
+		waitpid ($pid, 0), last
+		  if sysread ($in, $buf, 4096, $len) <= 0;
 		print substr ($buf, $len);
 
 		# Remove full lines from $buf and scan them for keywords.
@@ -861,22 +845,18 @@ sub xsystem {
 		}
 	    }
 	} else {
-	    waitpid ($pid, 0);
+	    waitpid ($pid, 0); 
 	}
 	alarm (0);
 	&$cleanup ();
 
-	if (WIFSIGNALED ($?) && WTERMSIG ($?) == SIGVTALRM_number ()) {
+	if (WIFSIGNALED ($?) && WTERMSIG ($?) == SIGVTALRM2 ()) {
 	    seek (STDOUT, 0, 2);
 	    print "\nTIMEOUT after $timeout seconds of host CPU time\n";
 	    exit 0;
 	}
 
-        # Kind of a gross hack, because qemu's isa-debug-exit device
-        # only allows odd-numbered exit values, so we can't exit
-        # cleanly with 0.  We use exit status 0x63 as an alternate
-        # "clean" exit status.
-	return ($? != 0x6300) && $?;
+	return $?;
     }
 }
 
@@ -918,14 +898,19 @@ sub timeout {
 # Returns the system load average over the last minute.
 # If the load average is less than 1.0 or cannot be determined, returns 1.0.
 sub get_load_average {
-    my ($avg) = `uptime` =~ /load average:\s*([^,]+),/;
+    my $avg;
+    if ($^O == 'darwin') {
+	$avg = (split /\s/, `uptime`)[11];
+    } else {
+        $avg = `uptime` =~ /load average:\s*([^,]+),/;
+    }
     return $avg >= 1.0 ? $avg : 1.0;
 }
 
 # Calls setitimer to set a timeout, then execs what was passed to us.
 sub exec_setitimer {
     if (defined $timeout) {
-	if ($^V ge 5.8.0) {
+	if ($] ge 5.8.0 && $^O != 'darwin') {
 	    eval "
               use Time::HiRes qw(setitimer ITIMER_VIRTUAL);
               setitimer (ITIMER_VIRTUAL, $timeout, 0);
@@ -941,7 +926,7 @@ sub exec_setitimer {
     exit (1);
 }
 
-sub SIGVTALRM_number {
+sub SIGVTALRM2 {
     use Config;
     my $i = 0;
     foreach my $name (split(' ', $Config{sig_name})) {

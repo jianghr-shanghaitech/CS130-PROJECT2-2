@@ -59,7 +59,7 @@ partition (unsigned char *array, size_t size, int pivot)
         {
           if (first == last)
             {
-              ASSERT (is_partitioned (array, size, pivot, left_size));
+              ASSERT (is_partitioned (array, size, (unsigned char) pivot, left_size));
               return left_size;
             }
           else if (*first >= pivot)
@@ -77,7 +77,7 @@ partition (unsigned char *array, size_t size, int pivot)
 
           if (first == last)
             {
-              ASSERT (is_partitioned (array, size, pivot, left_size));
+              ASSERT (is_partitioned (array, size, (unsigned char) pivot, left_size));
               return left_size;
             }
           else if (*last < pivot)

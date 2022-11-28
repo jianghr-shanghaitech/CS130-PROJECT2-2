@@ -3,8 +3,8 @@
 
 /* Hash table.
 
-   This data structure is thoroughly documented in the Tour of
-   Pintos for Project 3.
+   This data structure is thoroughly documented in the Pintos 
+   manual: Appendix A Reference Guide (A.8 Hash Table)
 
    This is a standard hash table with chaining.  To locate an
    element in the table, we compute a hash function over the

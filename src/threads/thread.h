@@ -4,10 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include <threads/synch.h>
-
-static struct lock lock_file;
-
+#include "threads/fixed-point.h"
+#include "lib/kernel/hash.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -18,8 +16,7 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
-/* Thread identifier type.
-   You can redefine this to whatever type you like. */
+/* Thread identifier type. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
@@ -27,13 +24,6 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
-struct thread_file
-  {
-    int fd;
-    struct file* file;
-    struct list_elem file_elem;
-  };
 
 /* A kernel thread or user process.
 
@@ -98,50 +88,51 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
+
     int priority;                       /* Priority. */
+    int donated_priority;               /* Highest priority donated by threads (in)directly waiting on its locks */
+
+    struct list held_locks;             /* List to store all locks held by the thread */
+    struct lock *needed_lock;           /* Pointer to lock currently needed by the thread */
+
     struct list_elem allelem;           /* List element for all threads list. */
+    
+    /* Members used for BSD Scheduler */
+    int nice;                           /* How nice thread should be to other threads */
+    fp_int recent_cpu;                  /* Estimation of CPU time used */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
+    
+    
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-#endif
+    int parent_id;                      /* Id of the thread's parent */ 
 
+    int current_file_descriptor;        /* Stores the file descriptor of the last file opened or used. */  
+    struct list file_list;              /* Stores the list of files opened by the thread. */
+    struct file *executable_file;       /* Pointer to the file the thread is executing. */
+
+    int current_mmapped_id;              /* Stores the mmapped id of the last file mapped */  
+    struct list mmapped_file_list;       /* Stores the list of files mapped by the thread. */
+    
+    /* Members used for Virtual Memory */
+    struct hash supp_page_table;        /* Supplemental Page Table */
+#endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-
-    struct list childs;                 /* The list of childs */
-    struct thread * thread_child;        /* Store the child of this thread */
-    int exit_status;                        /* Exit status */
-    struct semaphore parent_sema;              /* Control the child process's logic, finish parent waiting for child */
-    int execute;                       /* Judge whehter the child's thread execute successfully */
-    struct thread* parent;              /* Parent thread of the thread */
-
-    tid_t child_tid;                           /* tid of the thread */
-    bool working;                          /* whether the child's thread is run successfully */
-    struct list_elem child_elem;         /* list of children */
-    struct semaphore child_sema;               /* semaphore to control waiting */
-    int store_exit;                      /* the exit status of child thread */
-    
-    struct list files;                  /* List of opened files */
-    int file_fd;                        /* File's descriptor */
-    struct file * file_owned;           /* The file opened */
-    struct list file_descriptors;       /* List of file_descriptors the thread contains */
-
   };
-
-
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
-   Controlled by kernel command-line option "-o mlfqs". */
+   Controlled by kernel command-line option "mlfqs". */
 extern bool thread_mlfqs;
-void acquire_lock_f(void);
-void release_lock_f(void);
+
+
 void thread_init (void);
 void thread_start (void);
+size_t threads_ready(void);
 
 void thread_tick (void);
 void thread_print_stats (void);
@@ -163,13 +154,24 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
+bool
+thread_priority_comparator (const struct list_elem *a,
+                            const struct list_elem *b,
+                            void *aux);
+int get_effective_priority (struct thread *t);
 int thread_get_priority (void);
 void thread_set_priority (int);
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+
+
+#ifdef USERPROG
+   void increment_current_file_descriptor (struct thread *);
+#endif
 
 #endif /* threads/thread.h */

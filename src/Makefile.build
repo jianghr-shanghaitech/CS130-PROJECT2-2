@@ -21,6 +21,7 @@ threads_SRC += threads/intr-stubs.S	# Interrupt stubs.
 threads_SRC += threads/synch.c		# Synchronization.
 threads_SRC += threads/palloc.c		# Page allocator.
 threads_SRC += threads/malloc.c		# Subpage allocator.
+threads_SRC += threads/fixed-point.c	# Fixed Point Arithmetic functions.
 
 # Device driver code.
 devices_SRC  = devices/pit.c		# Programmable interrupt timer chip.
@@ -61,8 +62,11 @@ userprog_SRC += userprog/syscall.c	# System call handler.
 userprog_SRC += userprog/gdt.c		# GDT initialization.
 userprog_SRC += userprog/tss.c		# TSS management.
 
-# No virtual memory code yet.
-#vm_SRC = vm/file.c			# Some file.
+# Virtual memory code.
+vm_SRC  = vm/frame.c			    # Frame Table.
+vm_SRC += vm/supp-page-table.c      # Supplemental Page Table
+vm_SRC += vm/swap.c                 # Swap Table
+vm_SRC += vm/share-table.c          # Share Table
 
 # Filesystem code.
 filesys_SRC  = filesys/filesys.c	# Filesystem core.
@@ -88,8 +92,8 @@ kernel.bin: kernel.o
 threads/loader.o: threads/loader.S
 	$(CC) -c $< -o $@ $(ASFLAGS) $(CPPFLAGS) $(DEFINES)
 
-loader.bin: threads/loader.o
-	$(LD) -N -e 0 -Ttext 0x7c00 --oformat binary -o $@ $<
+loader.bin: threads/loader.o loaderfix.ld
+	$(LD) -N -e 0 -T $(word 2, $^) -o $@ $<
 
 os.dsk: kernel.bin
 	cat $^ > $@

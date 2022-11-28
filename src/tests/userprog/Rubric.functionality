@@ -32,6 +32,7 @@ Functionality of system calls:
 5	exec-once
 5	exec-multiple
 5	exec-arg
+5	exec-large-arg
 
 - Test "wait" system call.
 5	wait-simple

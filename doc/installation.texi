@@ -1,183 +1,157 @@
 @node Installing Pintos
 @appendix Installing Pintos
 
-This chapter explains how to install a Pintos development environment on
-your own machine.  If you are using a Pintos development environment
-that has been set up by someone else, you do not need to read this
-chapter or follow these instructions.
+This chapter explains how to install a Pintos development environment on your own machine. 
+We assume that you have already cloned your pintos git repo onto your machine.
+If you are using a Pintos development environment that has been set up by someone else, 
+you should not need to read this chapter or follow any of these instructions.
 
-The Pintos development environment is targeted at Unix-like systems.  It
-has been most extensively tested on GNU/Linux, in particular the Debian
-and Ubuntu distributions, and Solaris.  It is not designed to install
-under any form of Windows.
+The Pintos development environment is targeted at Unix-like systems. 
+It has been most extensively tested on GNU/Linux, in particular the Debian and Ubuntu distributions, and Solaris. 
+It is not designed to install under any form of Windows.
 
-Prerequisites for installing a Pintos development environment include
-the following, on top of standard Unix utilities:
+@menu
+* Mac Specific Initial Set-up::
+* Prerequisites::      
+* Installation::       
+@end menu
+
+@node Mac Specific Initial Set-up
+@section Mac Specific Initial Set-up
+
+This first section is intended to help Mac users prepare to set-up Pintos so that they can coexist with LabTS and your Linux-using friends, 
+without any on-going hassle.
+If you are not attempting to install Pintos on a Mac, then please skip ahead to the next section.
+
+To prepare your Mac for Pintos, you will need to preform the following initial set-up steps:
+
+@itemize
+@item Download and unpack a prepared selection of cross-compiled GCC binaries from: 
+@uref{https://www.doc.ic.ac.uk/~mjw03/OSLab/mac-i686-elf-gcc-binaries.tar}.@* 
+You can also install these binaries onto your Mac yourself if you prefer.
+    
+@item Add the unpacked GCC binaries to your path with a line like:@*
+@code{export PATH=$PATH:/your/local/path/here/mac-i686-elf-gcc-binaries/bin}
+
+@end itemize
+You should now be ready to follow the remaining instructions in this appendix.
+
+@node Prerequisites
+@section Prerequisites
+
+Before attempting to install a Pintos development environment, you should check that the following prerequisites, 
+on top of standard Unix utilities, are available on your system:
 
 @itemize @bullet
 @item
-Required: @uref{http://gcc.gnu.org/, GCC}.  Version 4.0 or later is
-preferred.  Version 3.3 or later should work.  If the host machine has
-an 80@var{x}86 processor, then GCC should be available as @command{gcc};
-otherwise, an 80@var{x}86 cross-compiler should be available as
-@command{i386-elf-gcc}.  A sample set of commands for installing GCC
-3.3.6 as a cross-compiler are included in
-@file{src/@/misc/@/gcc-3.3.6-cross-howto}.
+@strong{Required:} @uref{http://gcc.gnu.org/, GCC}.  
+Version 5.4 or later is preferred.  
+Version 4.0 or later should work.  
+If the host machine has an 80@var{x}86 processor (32-bit or 64-bit), then GCC should be available via the command @command{gcc}; 
+otherwise, an 80@var{x}86 cross-compiler should be available via the command @command{i386-elf-gcc}. 
+If you need a GCC cross-compiler, but one is not already installed on your system, then you will need to search online for an up-to-date installation guide.
 
 @item
-Required: @uref{http://www.gnu.org/software/binutils/, GNU binutils}.
-Pintos uses @command{addr2line}, @command{ar}, @command{ld},
-@command{objcopy}, and @command{ranlib}.  If the host machine is not an
-80@var{x}86, versions targeting 80@var{x}86 should be available with an
-@samp{i386-elf-} prefix.
+@strong{Required:} @uref{http://www.gnu.org/software/binutils/, GNU binutils}.
+Pintos uses the Unix utilities @command{addr2line}, @command{ar}, @command{ld}, @command{objcopy}, and @command{ranlib}. 
+If the host machine does not have an 80@var{x}86 processor, then versions targeting 80@var{x}86 should be available to install with an @samp{i386-elf-} prefix.
 
 @item
-Required: @uref{http://www.perl.org, Perl}.  Version 5.8.0 or later is
-preferred.  Version 5.6.1 or later should work.
+@strong{Required:} @uref{http://www.perl.org, Perl}.  
+Version 5.20.0 or later is preferred. 
+Version 5.6.1 or later should work.
 
 @item
-Required: @uref{http://www.gnu.org/software/make/, GNU make}, version
-3.80 or later.
+@strong{Required:} @uref{http://www.gnu.org/software/make/, GNU make}. 
+Version 4.0 or later is preferred.
+Version 3.80 or later should work.
 
 @item
-Recommended: @uref{http://fabrice.bellard.free.fr/qemu/, QEMU}, version
-0.11.0 or later.  If QEMU is not available, Bochs can be used, but its
-slowness is frustrating.
+@strong{Required:} @uref{http://fabrice.bellard.free.fr/qemu/, QEMU}.
+The QEMU emulator required to run Pintos is @command{qemu-system-i386} which is part of the @command{qemu-system} package on most modern Unix platforms.
+We recommend using version 2.10 or later, but at least version 2.5.
 
 @item
-Recommended: @uref{http://www.gnu.org/software/gdb/, GDB}.  GDB is
-helpful in debugging (@pxref{GDB}).  If the host machine is not an
-80@var{x}86, a version of GDB targeting 80@var{x}86 should be available
-as @samp{i386-elf-gdb}.
+@strong{Recommended:} @uref{http://www.gnu.org/software/gdb/, GDB}. 
+GDB is helpful in debugging (@pxref{GDB}). 
+If the host machine is not an 80@var{x}86, a version of GDB targeting 80@var{x}86 should be available as @samp{i386-elf-gdb}.
 
 @item
-Recommended: @uref{http://www.x.org/, X}.  Being able to use an X server
-makes the virtual machine feel more like a physical machine, but it is
-not strictly necessary.
+@strong{Recommended:} @uref{http://www.x.org/, X}. 
+Being able to use an X server makes the virtual machine feel more like a physical machine, but it is not strictly necessary.
 
 @item
-Optional: @uref{http://www.gnu.org/software/texinfo/, Texinfo}, version
-4.5 or later.  Texinfo is required to build the PDF version of the
-documentation.
+@strong{Optional:} @uref{http://www.gnu.org/software/texinfo/, Texinfo}. 
+Version 4.5 or later. 
+Texinfo is required to build the PDF version of the main Pintos documentation.
 
 @item
-Optional: @uref{http://www.tug.org/, @TeX{}}.  Also required to build
-the PDF version of the documentation.
+@strong{Optional:} @uref{http://www.tug.org/, @TeX{}}. 
+@TeX{} is required to build the PDF versions of the support documentation.
 
 @item
-Optional: @uref{http://www.vmware.com/, VMware Player}.  This is a
-third platform that can also be used to test Pintos.
+@strong{Optional:} @uref{http://www.vmware.com/, VMware Player}. 
+This is another emulation platform that can be used to run Pintos instead of QEMU.
+You will need to search online for an up-to-date installation guide.
 @end itemize
 
-Once these prerequisites are available, follow these instructions to
-install Pintos:
+@node Installation
+@section Installation
+
+Once you have checked that the prerequisites are available, 
+follow these instructions to install a Pintos development environment:
 
 @enumerate 1
-@item
-Install @uref{http://bochs.sourceforge.net/, Bochs}, version 2.2.6, as
-described below (@pxref{Building Bochs for Pintos}).
 
 @item
-Install scripts from @file{src/utils}.  Copy @file{backtrace},
-@file{pintos}, @file{pintos-gdb}, @file{pintos-mkdisk},
-@file{pintos-set-cmdline}, and @file{Pintos.pm} into the default
-@env{PATH}.
+Compile the Pintos utilities in @file{src/utils}.
+
+To do this, open a terminal in the @file{src/utils} directory of your Pintos project and run @command{make}.
+
+@item
+Install scripts from @file{src/utils}. 
+
+This easiest way to do this is to reconfigure your system's @env{PATH} to include the @file{src/utils} directory of your Pintos project.
+You can instead copy the files 
+@file{backtrace}, 
+@file{pintos}, 
+@file{pintos-gdb}, 
+@file{pintos-mkdisk}, 
+@file{pintos-set-cmdline}, 
+@file{Pintos.pm} 
+and 
+@file{squish-pty}
+into your system's default @env{PATH}.
+
+If your Perl is older than version 5.8.0, then you will also need to install @file{setitimer-helper}; otherwise, it is unneeded.
 
 @item 
-Install @file{src/misc/gdb-macros} in a public location.  Then use a
-text editor to edit the installed copy of @file{pintos-gdb}, changing
-the definition of @env{GDBMACROS} to point to where you installed
-@file{gdb-macros}.  Test the installation by running
-@command{pintos-gdb} without any arguments.  If it does not complain
-about missing @file{gdb-macros}, it is installed correctly.
+Install the GDB macros from @file{src/misc/gdb-macros}.  
+
+The easiest way to do this is to use a text editor to update your previously installed copy of @file{pintos-gdb}
+so that the definition of @env{GDBMACROS} points to your local @file{gdb-macros} file.
+You can instead copy the @file{pintos-gdb} file into a system directory of your choice, 
+but you will still need to update the definition of @env{GDBMACROS} in your installed copy of @file{pintos-gdb}.
+ 
+Test the GDB macro installation by running @command{pintos-gdb} without any arguments. 
+If it does not complain about missing @file{gdb-macros}, it is installed correctly.
 
 @item
-Compile the remaining Pintos utilities by typing @command{make} in
-@file{src/utils}.  Install @file{squish-pty} somewhere in @env{PATH}.
-To support VMware Player, install @file{squish-unix}.
-If your Perl is older than version 5.8.0, also install
-@file{setitimer-helper}; otherwise, it is unneeded.
+Pintos should now be ready for use.  
+
+To test your installation, open a terminal in the @file{src/devices} directory of your Pintos project and run @command{make check}.
+This will run the tests for Task 0 and should take no more than a few minutes.
 
 @item
-Pintos should now be ready for use.  If you have the Pintos reference
-solutions, which are provided only to faculty and their teaching
-assistants, then you may test your installation by running @command{make
-check} in the top-level @file{tests} directory.  The tests take between
-20 minutes and 1 hour to run, depending on the speed of your hardware.
+@strong{Optional:} Install alternative emulation software.
+
+To support VMware Player, install @file{squish-unix} (from the @file{src/utils} directory); otherwise it is unneeded.
 
 @item
-Optional: Build the documentation, by running @command{make dist} in the
-top-level @file{doc} directory.  This creates a @file{WWW} subdirectory
-within @file{doc} that contains HTML and PDF versions of the
-documentation, plus the design document templates and various hardware
-specifications referenced by the documentation.  Building the PDF
-version of the manual requires Texinfo and @TeX{} (see above).  You may
-install @file{WWW} wherever you find most useful.
+@strong{Optional:} Build the Pintos documentation.
 
-The @file{doc} directory is not included in the @file{.tar.gz}
-distributed for Pintos.  It is in the Pintos CVS tree available via
-@code{:pserver:anonymous@@footstool.stanford.edu:/var/lib/cvs}, in the
-@code{pintos} module.  The CVS tree is @emph{not} the authoritative
-source for Stanford course materials, which should be obtained from the
-course website.
+Open a terminal in the @file{doc} directory of your Pintos project and run @command{make dist}.
+This will create a @file{WWW} subdirectory within @file{doc} that contains both HTML and PDF versions of the documentation, 
+plus the design document templates and various hardware specifications referenced by the documentation.  
+
 @end enumerate
-
-@menu
-* Building Bochs for Pintos::   
-@end menu
-
-@node Building Bochs for Pintos
-@section Building Bochs for Pintos
-
-Upstream Bochs has bugs and warts that should be fixed when used with
-Pintos.  Thus, Bochs should be installed manually for use with Pintos,
-instead of using the packaged version of Bochs included with an
-operating system distribution.
-
-Two different Bochs binaries should be installed.  One, named simply
-@command{bochs}, should have the GDB stub enabled, by passing
-@option{--enable-gdb-stub} to the Bochs @command{configure} script.  The
-other, named @command{bochs-dbg}, should have the internal debugger
-enabled, by passing @option{--enable-debugger} to @command{configure}.
-(The @command{pintos} script selects a binary based on the options
-passed to it.)  In each case, the X, terminal, and ``no GUI'' interfaces
-should be configured, by passing @option{--with-x --with-x11 --with-term
---with-nogui} to @command{configure}.
-
-This version of Pintos is designed for use with Bochs 2.6.11.  A number
-of patches for this version of Bochs are included in @file{src/misc}:
-
-@table @file
-@item bochs-2.6.11-banner-stderr.patch
-
-Prints startup boilerplate information to stderr instead of stdout.
-
-@item bochs-2.6.11-jitter-plus-segv.patch
-
-Adds the ``jitter'' feature, in which timer interrupts are delivered at
-random intervals (@pxref{Debugging versus Testing}). Also makes the
-GDB stub report a SIGSEGV to the debugger when a page-fault
-exception occurs, instead of ``signal 0.''  The former can be ignored
-with @code{handle SIGSEGV nostop} but the latter cannot.
-
-@item bochs-2.6.11-link-tinfo.patch
-
-
-Patches the build mechanism to include the -ltinfo library; doesn't
-change any functionality.
-@end table
-
-The best way to build Bochs is by invoking
-@code{src/misc/bochs-2.6.11-build.sh}. This should be invoked in
-a directory containing the Bochs distribution file
-(@code{bochs-2.6.11-tar.gz}).
-The build script takes a single argument, which provides the destination
-for installation (the binaries will be placed in the @code{bin}
-subdirectory of that directory).
-The script will apply the patches and build both versions of Bochs.
-
-The @code{src/misc} directory also contains patches and build scripts for
-older versions of Bochs, if desired. However, these may require
-changes elsewhere in Pintos. For example, @code{src/utils/pintos}
-had to be modified for Bochs 2.6.11; if you use an older version of
-Bochs you will need to back out those changes.

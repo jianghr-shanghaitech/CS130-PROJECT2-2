@@ -1,38 +1,45 @@
-TEXIS = pintos.texi intro.texi threads.texi userprog.texi vm.texi	\
-filesys.texi license.texi reference.texi 44bsd.texi standards.texi	\
+TEXIS = pintos-ic.texi intro.texi codebase.texi threads.texi userprog.texi vm.texi	\
+license.texi reference.texi 44bsd.texi standards.texi	\
 doc.texi sample.tmpl.texi devel.texi debug.texi installation.texi	\
-bibliography.texi localsettings.texi
+bibliography.texi localsettings.texi task0_questions.texi localgitinstructions.texi
 
-all: pintos.html pintos.info pintos.pdf
+all: pintos-ic.html pintos-ic.info pintos-ic.dvi pintos-ic.ps pintos-ic.pdf task0_sheet.pdf alarmclock.pdf
 
-pintos.html: $(TEXIS) texi2html
+pintos-ic.html: $(TEXIS) texi2html
 	./texi2html -toc_file=$@ -split=chapter -nosec_nav -nomenu -init_file ./pintos-t2h.init $<
 
-pintos.info: $(TEXIS)
+pintos-ic.info: $(TEXIS)
 	makeinfo $<
 
-pintos.text: $(TEXIS)
+pintos-ic.text: $(TEXIS)
 	makeinfo --plaintext -o $@ $<
 
-pintos.dvi: $(TEXIS)
+pintos-ic.dvi: $(TEXIS)
 	texi2dvi $< -o $@
 
-pintos.ps: pintos.dvi
+pintos-ic.ps: pintos-ic.dvi
 	dvips $< -o $@
 
-pintos.pdf: $(TEXIS)
+pintos-ic.pdf: $(TEXIS)
 	texi2pdf $< -o $@
+
+task0_sheet.pdf : task0_sheet.texi task0_questions.texi
+	texi2pdf $< -o $@
+
+alarmclock.pdf : alarmclock.tex
+	pdflatex alarmclock
 
 %.texi: %
 	sed < $< > $@ 's/\([{}@]\)/\@\1/g;'
 
 clean:
 	rm -f *.info* *.html
-	rm -f *.dvi *.pdf *.ps *.log *~
+	rm -f *.aux *.cp *.dvi *.fn *.fns *.ky *.log *.pdf *.ps *.toc *.tp *.tps *.vr *.vrs *~
 	rm -rf WWW
 	rm -f sample.tmpl.texi
+	rm -f alarmclock.pdf
 
-dist: pintos.html pintos.pdf
+dist: pintos-ic.html pintos-ic.pdf
 	rm -rf WWW
 	mkdir WWW WWW/specs
 	cp *.html *.pdf *.css *.tmpl WWW

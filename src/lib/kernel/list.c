@@ -164,7 +164,7 @@ list_tail (struct list *list)
 
 /* Inserts ELEM just before BEFORE, which may be either an
    interior element or a tail.  The latter case is equivalent to
-   list_push_back(). */
+   list_push_back(). Undefined behavior if ELEM is already in the list. */
 void
 list_insert (struct list_elem *before, struct list_elem *elem)
 {

@@ -36,14 +36,14 @@
 The goal of a general-purpose scheduler is to balance threads' different
 scheduling needs.  Threads that perform a lot of I/O require a fast
 response time to keep input and output devices busy, but need little CPU
-time.  On the other hand, compute-bound threads need to receive a lot of
+time.  On the other hand, CPU-bound threads need to receive a lot of
 CPU time to finish their work, but have no requirement for fast response
 time.  Other threads lie somewhere in between, with periods of I/O
 punctuated by periods of computation, and thus have requirements that
 vary over time.  A well-designed scheduler can often accommodate threads
 with all these requirements simultaneously.
 
-For project 1, you must implement the scheduler described in this
+For task 1, you must implement the scheduler described in this
 appendix.  Our scheduler resembles the one described in @bibref{McKusick},
 which is one example of a @dfn{multilevel feedback queue} scheduler.
 This type of scheduler maintains several queues of ready-to-run threads,
@@ -105,9 +105,9 @@ Our scheduler has 64 priorities and thus 64 ready queues, numbered 0
 (@code{PRI_MIN}) through 63 (@code{PRI_MAX}).  Lower numbers correspond
 to lower priorities, so that priority 0 is the lowest priority
 and priority 63 is the highest.  Thread priority is calculated initially
-at thread initialization.  It is also recalculated once every fourth
-clock tick, for every thread.  In either case, it is determined by
-the formula
+at thread initialization.  It is also recalculated for each thread (if necessary) 
+on every fourth clock tick.  
+In either situation, it is determined by the formula:
 
 @center @t{@var{priority} = @code{PRI_MAX} - (@var{recent_cpu} / 4) - (@var{nice} * 2)},
 
@@ -120,12 +120,13 @@ and @var{nice}, respectively, have been found to work well in practice
 but lack deeper meaning.  The calculated @var{priority} is always
 adjusted to lie in the valid range @code{PRI_MIN} to @code{PRI_MAX}.
 
-This formula gives a thread that has received CPU
-time recently lower priority for being reassigned the CPU the next
-time the scheduler runs.  This is key to preventing starvation: a
-thread that has not received any CPU time recently will have a
+This formula gives a thread that has received CPU time recently lower priority 
+for being reassigned the CPU the next time the scheduler runs.  
+This is key to preventing starvation: 
+a thread that has not received any CPU time recently will have a
 @var{recent_cpu} of 0, which barring a high @var{nice} value should
 ensure that it receives CPU time soon.
+This technique is sometimes referred to as "aging" in the literature.
 
 @node Calculating recent_cpu
 @section Calculating @var{recent_cpu}
@@ -138,11 +139,11 @@ track the CPU time received in each of the last @var{n} seconds.
 However, this approach requires O(@var{n}) space per thread and
 O(@var{n}) time per calculation of a new weighted average.
 
-Instead, we use a @dfn{exponentially weighted moving average}, which
+Instead, we use an @dfn{exponentially weighted moving average}, which
 takes this general form:
 
 @center @tm{x(0) = f(0),}@nm{x(0) = f(0),}
-@center @tm{x(t) = ax(t-1) + (1-a)f(t),}@nm{x(t) = a*x(t-1) + f(t),}
+@center @tm{x(t) = ax(t-1) + (1-a)f(t),}@nm{x(t) = a*x(t-1) + (1-a)*f(t),}
 @center @tm{a = k/(k+1),}@nm{a = k/(k+1),}
 
 @noindent where @math{x(t)} is the moving average at integer time @am{t
@@ -150,17 +151,17 @@ takes this general form:
 > 0} controls the rate of decay.  We can iterate the formula over a few
 steps as follows:
 
-@center @math{x(1) = f(1)},
-@center @am{x(2) = af(1) + f(2), x(2) = a*f(1) + f(2)},
+@center @math{x(0) = f(0)},
+@center @am{x(1) = af(0) + (1-a)f(1), x(1) = a*f(0) + (1-a)*f(1)},
 @center @am{\vdots, ...}
-@center @am{x(5) = a^4f(1) + a^3f(2) + a^2f(3) + af(4) + f(5), x(5) = a**4*f(1) + a**3*f(2) + a**2*f(3) + a*f(4) + f(5)}.
+@center @am{x(4) = a^4f(0) + a^3(1-a)f(1) + a^2(1-a)f(2) + a(1-a)f(3) + (1-a)f(4), x(4) = a**4*f(0) + a**3*(1-a)*f(1) + a**2*(1-a)*f(2) + a*(1-a)*f(3) + (1-a)*f(4)}.
 
-@noindent The value of @math{f(t)} has a weight of 1 at time @math{t}, a
-weight of @math{a} at time @math{t+1}, @am{a^2, a**2} at time
+@noindent The value of @math{f(t)} has a weight of @math{(1-a)} at time @math{t}, 
+a weight of @math{a(1-a)} at time @math{t+1}, @am{a^2(1-a), a**2(1-a)} at time
 @math{t+2}, and so on.  We can also relate @math{x(t)} to @math{k}:
 @math{f(t)} has a weight of approximately @math{1/e} at time @math{t+k},
 approximately @am{1/e^2, 1/e**2} at time @am{t+2k, t+2*k}, and so on.
-From the opposite direction, @math{f(t)} decays to weight @math{w} at
+From the opposite direction, @math{f(t)} decays to weight @math{w} at around
 time @am{t + \log_aw, t + ln(w)/ln(a)}.
 
 The initial value of @var{recent_cpu} is 0 in the first thread
@@ -194,7 +195,7 @@ negative @var{nice} value.  Do not clamp negative @var{recent_cpu} to 0.
 
 You may need to think about the order of calculations in this formula.
 We recommend computing the coefficient of @var{recent_cpu} first, then
-multiplying.  Some students have reported that multiplying
+multiplying.  In the past, some students have reported that multiplying
 @var{load_avg} by @var{recent_cpu} directly can cause overflow.
 
 You must implement @func{thread_get_recent_cpu}, for which there is a
@@ -239,12 +240,12 @@ nearest integer.
 @section Summary
 
 The following formulas summarize the calculations required to implement the
-scheduler.  They are not a complete description of scheduler requirements.
+scheduler.  They are not a complete description of the scheduler's requirements.
 
 Every thread has a @var{nice} value between -20 and 20 directly under
 its control.  Each thread also has a priority, between 0
-(@code{PRI_MIN}) through 63 (@code{PRI_MAX}), which is recalculated
-using the following formula every fourth tick:
+(@code{PRI_MIN}) through 63 (@code{PRI_MAX}), which is recalculated (as necessary)
+using the following formula:
 
 @center @t{@var{priority} = @code{PRI_MAX} - (@var{recent_cpu} / 4) - (@var{nice} * 2)}.
 
@@ -264,6 +265,16 @@ per second as follows:
 @noindent where @var{ready_threads} is the number of threads that are
 either running or ready to run at time of update (not including the idle
 thread).
+
+Note that it is important that each of these calculations is based on up-to-date data values.
+That is, the calculation of each thread's @var{priority} should be based on the most recent @var{recent_cpu} value
+and, similarly, the calculation of @var{recent_cpu} should itself be based on the most recent @var{load_avg} value.
+You should take these dependencies into account when implementing these calculations.
+
+You should also think about the efficiency of your calculations.
+The more time your scheduler spends working on these calculations, 
+the less time your actual processes will have to run.
+It is important, therefore, to only perform calculations when absolutely necessary. 
 
 @node Fixed-Point Real Arithmetic
 @section Fixed-Point Real Arithmetic
@@ -317,9 +328,9 @@ quotient, @code{x / n}.
 Multiplying two fixed-point values has two complications.  First, the
 decimal point of the result is @m{q} bits too far to the left.  Consider
 that @am{(59/60)(59/60), (59/60)*(59/60)} should be slightly less than
-1, but @tm{16,111\times 16,111}@nm{16,111*16,111} = 259,564,321 is much
+1, but @tm{16,110\times 16,110}@nm{16,110*16,110} = 259,532,100 is much
 greater than @am{2^{14},2**14} = 16,384.  Shifting @m{q} bits right, we
-get @tm{259,564,321/2^{14}}@nm{259,564,321/(2**14)} = 15,842, or about 0.97,
+get @tm{259,532,100/2^{14}}@nm{259,532,100/(2**14)} = 15,840, or about 0.97,
 the correct answer.  Second, the multiplication can overflow even though
 the answer is representable.  For example, 64 in 17.14 format is
 @am{64 \times 2^{14}, 64*(2**14)} = 1,048,576 and its square @am{64^2,

@@ -1,5 +1,5 @@
 @node License
-@unnumbered License
+@appendix License
 
 Pintos, including its documentation, is subject to the following
 license:

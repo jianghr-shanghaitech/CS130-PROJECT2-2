@@ -3443,7 +3443,7 @@ sub pass1
         #############################################################
         # value substitution before macro expansion, so that
         # it works in macro arguments
-        s/\@value\{($VARRE)}/$value{$1}/eg;
+        s/\@value\{($VARRE)\}/$value{$1}/eg;
 
         #############################################################
         # macro substitution
@@ -3512,8 +3512,8 @@ sub pass1
                     $after = '';
                 }
                 $args =~ s|\\\\|\\|g;
-                $args =~ s|\\\{|{|g;
-                                $args =~ s|\\}|}|g;
+                $args =~ s|\\\{|\{|g;
+                                $args =~ s|\\\}|\}|g;
                 if (@{$macros->{$name}->{Args}} > 1)
                 {
                     $args =~ s/(^|[^\\]),/$1$;/g ;
@@ -4920,7 +4920,7 @@ sub pass2
         #
         # xref
         #
-        while (/\@(x|px|info|)ref\{([^{}]+)(}?)/)
+        while (/\@(x|px|info|)ref\{([^{}]+)(\}?)/)
         {
             # note: Texinfo may accept other characters
             ($type, $nodes, $full) = ($1, $2, $3);
@@ -6163,7 +6163,7 @@ sub substitute_style
     {
         $changed = 0;
         $done = '';
-        while (/\@(\w+)\{([^\{\}]+)}/ || /\@(,)\{([^\{\}]+)}/)
+        while (/\@(\w+)\{([^\{\}]+)\}/ || /\@(,)\{([^\{\}]+)\}/)
         {
             $text = &apply_style($1, $2);
             if ($text)

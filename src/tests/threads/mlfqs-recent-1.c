@@ -126,7 +126,7 @@ test_mlfqs_recent_1 (void)
   start_time = timer_ticks ();
   for (;;) 
     {
-      int elapsed = timer_elapsed (start_time);
+      int elapsed = (int)(timer_elapsed (start_time));
       if (elapsed % (TIMER_FREQ * 2) == 0 && elapsed > last_elapsed) 
         {
           int recent_cpu = thread_get_recent_cpu ();

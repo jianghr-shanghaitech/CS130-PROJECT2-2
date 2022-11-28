@@ -1,34 +1,33 @@
-@node Project 3--Virtual Memory
-@chapter Project 3: Virtual Memory
+@node Task 3--Virtual Memory
+@chapter Task 3: Virtual Memory
 
 By now you should have some familiarity with the inner workings of
-Pintos.  Your
-OS can properly handle multiple threads of execution with proper
+Pintos.  Your OS can properly handle multiple threads of execution with proper
 synchronization, and can load multiple user programs at once.  However,
 the number and size of programs that can run is limited by the machine's
 main memory size.  In this assignment, you will remove that limitation.
 
 You will build this assignment on top of the last one.  Test programs
-from project 2 should also work with project 3.  You should take care to
-fix any bugs in your project 2 submission before you start work on
-project 3, because those bugs will most likely cause the same problems
-in project 3.
+from task 2 should also work with task 3.  You should take care to
+fix any bugs in your task 2 submission before you start work on
+task 3, because those bugs will most likely cause the same problems
+in task 3.
 
 You will continue to handle Pintos disks and file systems the same way
 you did in the previous assignment (@pxref{Using the File System}).
 
 @menu
-* Project 3 Background::        
-* Project 3 Suggested Order of Implementation::  
-* Project 3 Requirements::      
-* Project 3 FAQ::               
+* Task 3 Background::        
+* Task 3 Suggested Order of Implementation::  
+* Task 3 Requirements::      
+* Task 3 FAQ::               
 @end menu
 
-@node Project 3 Background
+@node Task 3 Background
 @section Background
 
 @menu
-* Project 3 Source Files::      
+* Task 3 Source Files::      
 * Memory Terminology::          
 * Resource Management Overview::  
 * Managing the Supplemental Page Table::  
@@ -37,14 +36,14 @@ you did in the previous assignment (@pxref{Using the File System}).
 * Managing Memory Mapped Files Back::  
 @end menu
 
-@node Project 3 Source Files
+@node Task 3 Source Files
 @subsection Source Files
 
-You will work in the @file{vm} directory for this project.  The
+You will work in the @file{vm} directory for this task.  The
 @file{vm} directory contains only @file{Makefile}s.  The only
 change from @file{userprog} is that this new @file{Makefile} turns on
 the setting @option{-DVM}.  All code you write will be in new
-files or in files introduced in earlier projects.
+files or in files introduced in earlier tasks.
 
 You will probably be encountering just a few files for the first time:
 
@@ -60,7 +59,7 @@ use this interface to access the swap partition as a block device.
 
 Careful definitions are needed to keep discussion of virtual memory from
 being confusing.  Thus, we begin by presenting some terminology for
-memory and storage.  Some of these terms should be familiar from project
+memory and storage.  Some of these terms should be familiar from task
 2 (@pxref{Virtual Memory Layout}), but much of it is new.
 
 @menu
@@ -90,12 +89,12 @@ offset} (or just @dfn{offset}), like this:
 @end group
 @end example
 
-Each process has an independent set of @dfn{user (virtual) pages}, which
+Each process has an independent set of @dfn{user virtual pages}, which
 are those pages below virtual address @code{PHYS_BASE}, typically
-@t{0xc0000000} (3 GB).  The set of @dfn{kernel (virtual) pages}, on the
+@t{0xc0000000} (3 GB).  The set of @dfn{kernel virtual pages}, on the
 other hand, is global, remaining the same regardless of what thread or
-process is active.  The kernel may access both user and kernel pages,
-but a user process may access only its own user pages.  @xref{Virtual
+process is active.  The kernel may access both user virtual and kernel virtual pages,
+but a user process may access only its own user virtual pages.  @xref{Virtual
 Memory Layout}, for more information.
 
 Pintos provides several useful functions for working with virtual
@@ -147,15 +146,15 @@ address, on the right.
 
 @example
 @group
-                          +----------+
-         .--------------->|Page Table|---------.
-        /                 +----------+          |
-   31   |   12 11    0                    31    V   12 11    0
-  +-----------+-------+                  +------------+-------+
-  |  Page Nr  |  Ofs  |                  |  Frame Nr  |  Ofs  |
-  +-----------+-------+                  +------------+-------+
-   Virt Addr      |                       Phys Addr       ^
-                   \_____________________________________/
+                         +----------+
+        .--------------->|Page Table|-----------.
+       /                 +----------+            |
+   31  |  12 11 0                            31  |  12 11 0
+  +---------+----+                          +---------+----+
+  |Page Nr  | Ofs|                          |Frame Nr | Ofs|
+  +---------+----+                          +---------+----+
+   Virt Addr   |                             Phys Addr   |
+                \_______________________________________/
 @end group
 @end example
 
@@ -175,7 +174,7 @@ You will need to design the following data structures:
 @table @asis
 @item Supplemental page table
 
-Enables page fault handling by supplementing the hadrware page table.
+Enables page fault handling by supplementing the page table.
 @xref{Managing the Supplemental Page Table}.
 
 @item Frame table
@@ -204,8 +203,8 @@ scope, either local (per-process) or global (applying to the whole
 system), and how many instances are required within its scope.
 
 To simplify your design, you may store these data structures in
-non-pageable memory.  That means that you can be sure that pointers
-among them will remain valid.
+non-pageable memory (i.e. kernel space).  
+That means that you can be sure that pointers among them will remain valid.
 
 Possible choices of data structures include arrays, lists, bitmaps, and
 hash tables.  An array is often the simplest approach, but a sparsely
@@ -233,10 +232,10 @@ Thus, we do not recommend implementing any advanced data structure
 @node Managing the Supplemental Page Table
 @subsection Managing the Supplemental Page Table
 
-The @dfn{supplemental page table} supplements the page table with
+The @dfn{supplemental page table} extends the page table with
 additional data about each page.  It is needed because of the
 limitations imposed by the page table's format.  Such a data structure
-is often called a ``page table'' also; we add the word ``supplemental''
+is also often referred to as  a ``page table''; we add the word ``supplemental''
 to reduce confusion.
 
 The supplemental page table is used for at least two purposes.  Most
@@ -254,8 +253,8 @@ to do so.  We recommend this approach for advanced students only.
 @xref{Page Table Entry Format}, for more information.
 
 The most important user of the supplemental page table is the page fault
-handler.  In project 2, a page fault always indicated a bug in the
-kernel or a user program.  In project 3, this is no longer true.  Now, a
+handler.  In task 2, a page fault always indicated a bug in the
+kernel or a user program.  In task 3, this is no longer true.  Now, a
 page fault might only indicate that the page must be brought in from a
 file or swap.  You will have to implement a more sophisticated page
 fault handler to handle these cases.  Your page fault handler, which you
@@ -267,7 +266,7 @@ should implement by modifying @func{page_fault} in
 Locate the page that faulted in the supplemental page table.  If the
 memory reference is valid, use the supplemental page table entry to
 locate the data that goes in the page, which might be in the file
-system, or in a swap slot, or it might simply be an all-zero page.  If
+system, or in a swap slot, or it might simply be an all-zero page.  When
 you implement sharing, the page's data might even already be in a page
 frame, but not in the page table.
 
@@ -281,19 +280,19 @@ access terminates the process and thereby frees all of its resources.
 Obtain a frame to store the page.  @xref{Managing the Frame Table}, for
 details.
 
-If you implement sharing, the data you need may already be in a frame,
+When you implement sharing, the data you need may already be in a frame,
 in which case you must be able to locate that frame.
 
 @item
 Fetch the data into the frame, by reading it from the file system or
 swap, zeroing it, etc.
 
-If you implement sharing, the page you need may already be in a frame,
+When you implement sharing, the page you need may already be in a frame,
 in which case no action is necessary in this step.
 
 @item
-Point the page table entry for the faulting virtual address to the
-physical page.  You can use the functions in @file{userprog/pagedir.c}.
+Point the page table entry for the faulting virtual address to the frame.  
+You can use the functions in @file{userprog/pagedir.c}.
 @end enumerate
 
 @node Managing the Frame Table
@@ -319,7 +318,7 @@ must be made free by evicting some page from its frame.
 If no frame can be evicted without allocating a swap slot, but swap is
 full, panic the kernel.  Real OSes apply a wide range of policies to
 recover from or prevent such situations, but these policies are beyond
-the scope of this project.
+the scope of this task.
 
 The process of eviction comprises roughly the following steps:
 
@@ -332,7 +331,7 @@ come in handy.
 @item
 Remove references to the frame from any page table that refers to it.
 
-Unless you have implemented sharing, only a single page should refer to
+Until you have implemented sharing, only a single page should refer to
 a frame at any given time.
 
 @item
@@ -367,8 +366,7 @@ could check and update the accessed and dirty bits for both addresses.
 Alternatively, the kernel could avoid the problem by only accessing user
 data through the user virtual address.
 
-Other aliases should only arise if you implement sharing for extra
-credit (@pxref{VM Extra Credit}), or if there is a bug in your code.
+Other aliases should only arise once you implement sharing, or if there is a bug in your code.
 
 @xref{Page Table Accessed and Dirty Bits}, for details of the functions
 to work with accessed and dirty bits.
@@ -441,7 +439,7 @@ mapped files.  This is necessary to properly handle page faults in the
 mapped regions and to ensure that mapped files do not overlap any other
 segments within the process.
 
-@node Project 3 Suggested Order of Implementation
+@node Task 3 Suggested Order of Implementation
 @section Suggested Order of Implementation
 
 We suggest the following initial order of implementation:
@@ -454,7 +452,7 @@ to use your frame table allocator.
 Do not implement swapping yet.  If you run out of frames, fail the
 allocator or panic the kernel.
 
-After this step, your kernel should still pass all the project 2 test
+After this step, your kernel should still pass all the task 2 test
 cases.
 
 @item
@@ -465,22 +463,23 @@ executable and setting up its stack.  Implement loading of code and data
 segments in the page fault handler.  For now, consider only valid
 accesses.
 
-After this step, your kernel should pass all of the project 2
+After this step, your kernel should pass all of the task 2
 functionality test cases, but only some of the robustness tests.
-@end enumerate
 
-From here, you can implement stack growth, mapped files, and page
+@item
+From here, you can implement stack growth, mapped files, sharing and page
 reclamation on process exit in parallel.
 
+@item
 The next step is to implement eviction (@pxref{Managing the Frame
 Table}).  Initially you could choose the page to evict randomly.  At
 this point, you need to consider how to manage accessed and dirty bits
 and aliasing of user and kernel pages.  Synchronization is also a
 concern: how do you deal with it if process A faults on a page whose
-frame process B is in the process of evicting?  Finally, implement a
-eviction strategy such as the clock algorithm.
+frame process B is in the process of evicting?  
+@end enumerate
 
-@node Project 3 Requirements
+@node Task 3 Requirements
 @section Requirements
 
 This assignment is an open-ended design problem.  We are going to say as
@@ -491,35 +490,31 @@ freedom to choose how to handle page faults, how to organize the swap
 partition, how to implement paging, etc.
 
 @menu
-* Project 3 Design Document::   
+* Task 3 Design Document::   
 * Paging::                      
 * Stack Growth::                
 * Memory Mapped Files::         
 @end menu
 
-@node Project 3 Design Document
+@node Task 3 Design Document
 @subsection Design Document
 
-Before you turn in your project, you must copy @uref{vm.tmpl, , the
-project 3 design document template} into your source tree under the name
-@file{pintos/src/vm/DESIGNDOC} and fill it in.  We recommend that you
-read the design document template before you start working on the
-project.  @xref{Project Documentation}, for a sample design document
-that goes along with a fictitious project.
+When you submit your work for task 3, you must also submit a completed copy of
+@uref{vm.tmpl, , the task 3 design document template}.
+You can find a template design document for this task in @file{pintos/doc/vm.tmpl} and also on CATe.
+You are free to submit your design document as either a @file{.txt} or @file{.pdf} file.
+We recommend that you read the design document template before you start working on the task.  
+@xref{Task Documentation}, for a sample design document that goes along with a fictitious task.
 
 @node Paging
 @subsection Paging
 
 Implement paging for segments loaded from executables.  All of these
 pages should be loaded lazily, that is, only as the kernel intercepts
-page faults for them.  Upon eviction, pages modified since load (e.g.@:
-as indicated by the ``dirty bit'') should be written to swap.
+page faults for them.  Upon eviction, pages modified since load (e.g. data 
+segment pages), as indicated by the ``dirty bit'', should be written to swap.
 Unmodified pages, including read-only pages, should never be written to
 swap because they can always be read back from the executable.
-
-Implement a global page replacement algorithm that approximates LRU.
-Your algorithm should perform at least as well as the simple variant
-of the ``second chance'' or ``clock'' algorithm.
 
 Your design should allow for parallelism.  If one page fault requires
 I/O, in the meantime processes that do not fault should continue
@@ -554,14 +549,12 @@ be read from the underlying file and the remainder zeroed.
 @node Stack Growth
 @subsection Stack Growth
 
-Implement stack growth.  In project 2, the stack was a single page at
-the top of the user virtual address space, and programs were limited to
-that much stack.  Now, if the stack grows past its current size,
-allocate additional pages as necessary.
+Implement stack growth.  
+In task 2, the stack was limited a single page at the top of the user virtual address space and user programs would crash if they exceeded this limit.
+Now, if the stack grows past its current size, you should allocate additional pages as necessary.
 
-Allocate additional pages only if they ``appear'' to be stack accesses.
-Devise a heuristic that attempts to distinguish stack accesses from
-other accesses.
+You should allocate additional stack pages only if the corresponding page fault ``appears'' to be a stack access.
+To this end, you will need to devise a heuristic that attempts to distinguish stack accesses from other accesses.
 
 User programs are buggy if they write to the stack below the stack
 pointer, because typical real OSes may interrupt a process at any time
@@ -595,8 +588,8 @@ from user to kernel mode.
 
 You should impose some absolute limit on stack size, as do most OSes.
 Some OSes make the limit user-adjustable, e.g.@: with the
-@command{ulimit} command on many Unix systems.  On many GNU/Linux systems,
-the default limit is 8 MB.
+@command{ulimit} command on many Unix systems.  
+On many GNU/Linux systems, the default limit is 8 MB.
 
 The first stack page need not be allocated lazily.  You can allocate
 and initialize it with the command line arguments at load time, with 
@@ -634,7 +627,8 @@ and the process's mappings must be unchanged.
 A call to @code{mmap} may fail if the file open as @var{fd} has a
 length of zero bytes.  It must fail if @var{addr} is not page-aligned
 or if the range of pages mapped overlaps any existing set of mapped
-pages, including the stack or pages mapped at executable load time.
+pages, including the space reserved for the stack 
+or pages mapped at executable load time.
 It must also fail if @var{addr} is 0, because some Pintos code assumes
 virtual page 0 is not mapped.  Finally, file descriptors 0 and 1,
 representing console input and output, are not mappable.
@@ -661,7 +655,7 @@ its mappings.
 
 If two or more processes map the same file, there is no requirement that
 they see consistent data.  Unix handles this by making the two mappings
-share the same physical page, but the @code{mmap} system call also has
+share the same physical page, but the Unix @code{mmap} system call also has
 an argument allowing the client to specify whether the page is shared or
 private (i.e.@: copy-on-write).
 
@@ -694,7 +688,7 @@ replacement algorithm's choices when looking for pages to evict, so be
 sure to pin pages no longer than necessary, and avoid pinning pages when
 it is not necessary.
 
-@node Project 3 FAQ
+@node Task 3 FAQ
 @section FAQ
 
 @table @b
@@ -705,8 +699,8 @@ Here's a summary of our reference solution, produced by the
 and deleted; a changed line counts as both an insertion and a deletion.
 
 This summary is relative to the Pintos base code, but the reference
-solution for project 3 starts from the reference solution to project 2.
-@xref{Project 2 FAQ}, for the summary of project 2.
+solution for task 3 starts from the reference solution to task 2.
+@xref{Task 2 FAQ}, for the summary of task 2.
 
 The reference solution represents just one possible solution.  Many
 other solutions are also possible and many of those differ greatly from
@@ -735,19 +729,27 @@ modified by the reference solution.
  17 files changed, 1532 insertions(+), 104 deletions(-)
 @end verbatim
 
-@item Do we need a working Project 2 to implement Project 3?
+@item Do we need a working Task 2 to implement Task 3?
 
 Yes.
 
-@item What extra credit is available?
+@item How complex does our page replacement algorithm need to be?
 @anchor{VM Extra Credit}
+If you implement an advanced page replacement algorithm, 
+such as the ``second chance'' or the ``clock'' algorithms, 
+then you will get more marks for this part of the task. 
 
-You may implement sharing: when multiple processes are created that use
+You should also implement sharing: when multiple processes are created that use
 the same executable file, share read-only pages among those processes
 instead of creating separate copies of read-only segments for each
 process.  If you carefully designed your data structures,
 sharing of read-only pages should not make this part significantly
 harder.
+
+@item Do we need to handle paging for both user virtual memory and kernel virtual memory?
+
+No, you only need to implement paging for user virtual memory.
+One of the golden rules of OS development is ``Don't page out the paging code!''
 
 @item How do we resume a process after we have handled a page fault?
 
@@ -793,4 +795,13 @@ you like, but it should be the underlying mechanism.
 Also, you can use the @option{-ul} kernel command-line option to limit
 the size of the user pool, which makes it easy to test your VM
 implementation with various user memory sizes.
+
+@item What should we do if the stack grows into a @code{mmap} file?
+
+This should not be possible. 
+The specification of @code{mmap()} rules out creating mappings within the possible stack space,
+so you should abort any attempt to create a mapping within that space.
+The stack should also not be able to grow beyond it's reserved stack space, 
+thus ruling out the possibility of any such overlap.
+
 @end table

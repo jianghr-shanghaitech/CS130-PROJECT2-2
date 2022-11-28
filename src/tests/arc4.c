@@ -21,7 +21,7 @@ arc4_init (struct arc4 *arc4, const void *key_, size_t size)
   s = arc4->s;
   arc4->i = arc4->j = 0;
   for (i = 0; i < 256; i++)
-    s[i] = i;
+    s[i] = (uint8_t) i;
   for (key_idx = 0, i = j = 0; i < 256; i++)
     {
       j = (j + s[i] + key[key_idx]) & 255;
@@ -43,8 +43,8 @@ arc4_crypt (struct arc4 *arc4, void *buf_, size_t size)
   j = arc4->j;
   while (size-- > 0)
     {
-      i += 1;
-      j += s[i];
+      i = (uint8_t) (i + 1);
+      j = (uint8_t) (j + s[i]);
       swap_byte (s + i, s + j);
       *buf++ ^= s[(s[i] + s[j]) & 255];
     }

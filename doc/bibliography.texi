@@ -1,5 +1,5 @@
 @node Bibliography
-@unnumbered Bibliography
+@appendix Bibliography
 
 @macro bibdfn{cite}
 @noindent @anchor{\cite\}

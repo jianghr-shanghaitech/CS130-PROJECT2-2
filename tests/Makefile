@@ -1,4 +1,4 @@
-TESTS = examples threads p1 userprog p2 vm p3 filesys p4
+TESTS = examples devices p0 threads p1 userprog p2 vm p3 filesys p4
 
 PATH := $(shell pwd)/../src/utils:$(PATH)
 
@@ -19,22 +19,22 @@ cd $@/src && $(MAKE) -s clean
 endef
 
 define run-tests
-cd $@/src/$(PROJECT) && time $(MAKE) check
+cd $@/src/$(TASK) && time $(MAKE) check
 endef
 
 define grade-tests
-cd $@/src/$(PROJECT) && $(MAKE) grade
-cd $@/src/$(PROJECT) && grep -q PERFECT build/grade
-cd $@/src/$(PROJECT) && grep -qv warning build/grade
+cd $@/src/$(TASK) && $(MAKE) grade
+cd $@/src/$(TASK) && grep -q PERFECT build/grade
+cd $@/src/$(TASK) && grep -qv warning build/grade
 endef
 
 define compile
-cd $@/src/$(PROJECT) && $(MAKE)
+cd $@/src/$(TASK) && $(MAKE)
 endef
 
 define test-clean
-cd $@/src/$(PROJECT)/build && $(MAKE) clean
-cd $@/src/$(PROJECT)/build && set `find -type f` > /dev/null && test $$# = 1
+cd $@/src/$(TASK)/build && $(MAKE) clean
+cd $@/src/$(TASK)/build && set `find . -type f` > /dev/null && test $$# = 1
 endef
 
 define clean
@@ -45,17 +45,24 @@ define apply-patch
 (cd $@ && patch -p0) < ../solutions/$@.patch
 endef
 
-PROJECT = $@
-p1: PROJECT = threads
-p2: PROJECT = userprog
-p3: PROJECT = vm
-p4: PROJECT = filesys
+TASK = $@
+p0: TASK = devices
+p1: TASK = threads
+p2: TASK = userprog
+p3: TASK = vm
+p4: TASK = filesys
 
 # Tests that just compile the provided code.
+devices::
+	$(mk-sandbox)
+	$(compile)
+	$(run-tests)
+	$(test-clean)
+	$(clean)
 threads::
 	$(mk-sandbox)
 	$(compile)
-	$(run-tests) TESTS=tests/threads/alarm-single
+	$(run-tests) 
 	$(test-clean)
 	$(clean)
 userprog vm filesys::
@@ -69,7 +76,7 @@ examples::
 	$(clean)
 
 # Tests for the reference solutions.
-p1 p2 p3 p4::
+p0 p1 p2 p3 p4::
 	$(mk-sandbox)
 	$(apply-patch)
 	$(run-tests)

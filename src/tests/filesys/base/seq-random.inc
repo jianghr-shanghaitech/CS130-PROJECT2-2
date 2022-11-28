@@ -15,7 +15,7 @@ return_random (void)
 void
 test_main (void) 
 {
-  random_init (-1);
+  random_init ( (unsigned) -1);
   seq_test ("nibble",
             buf, sizeof buf, sizeof buf,
             return_random, NULL);
