@@ -16,6 +16,32 @@
 #include "vm/page.h"
 #include "vm/mmap.h"
 
+void halt(); /* syscall halt. */
+void exit (int status); /* syscall exit. */
+pid_t exec (const char *cmd_line); /* syscall exec. */
+
+bool create (const char *file, unsigned initial_size); /* syscall create */
+bool remove (const char *file); /* syscall remove */
+int open (const char *file);/* syscall open */
+int wait (int pid); /*syscall wait */
+int filesize (int fd);/* syscall filesize */
+int read (int fd, void *buffer, unsigned size);  /* syscall read */
+int write (int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position); /* syscall seek */
+unsigned tell (int fd); /* syscall tell */
+void close(int fd); /* syscall close */
+static void syscall_handler (struct intr_frame *);
+struct thread_file * find_file_id(int fd);
+static void check_uadd (const uint8_t *uaddr); // check useraddress validation
+
+mapid_t mmap(int fd, void* addr);
+void munmap(mapid_t mapping);
+
+
+void read_user(void* ptr, void* rt, size_t size); // read from user stack
+void invalid_exit(); // handle excption exit cases
+static int get_user (const uint8_t *uaddr);
+
 void invalid_exit(){
   if(lock_held_by_current_thread(&syscall_init))
     lock_release(&syscall_init);
@@ -54,7 +80,6 @@ void read_user(void* ptr, void* rt, size_t size){
 
 static void syscall_handler (struct intr_frame *);
 static struct file_descriptor *getfile (struct thread *t, int fd);
-static void check_read_buffer (void *buffer, unsigned size);
 static void read_buf_page_fault_handler (void *fault_addr);
 
 static const struct intr_frame *intr_f;
@@ -73,12 +98,9 @@ syscall_handler (struct intr_frame *f)
   uint32_t *esp = f->esp;
   intr_f = f;
   /* Validate potential addrs */
-  if (!validate_addr((void *) esp))
-  {
-    exit(-1);
-  }
+  check_uadd(esp);
   
-  /* Switch by the syscall code. For each syscall, check each argument before calling. */
+  // Choose the syscall according to the type number
   switch (sys_code)
   {
     case SYS_HALT:
@@ -163,11 +185,6 @@ syscall_handler (struct intr_frame *f)
     }
     case SYS_SEEK:
     {
-    if (!validate_addr((void *) (esp + 1)) 
-    || !validate_addr((void *) (esp + 2)))
-      {
-        exit(-1);
-      }
       int fd = *(esp + 1);
       unsigned position = *(esp + 2);
       seek (fd, position);
@@ -189,11 +206,6 @@ syscall_handler (struct intr_frame *f)
     }
      case SYS_MMAP:
     {
-      if (!validate_addr((void *) (esp + 1)) 
-      || !validate_addr((void *) (esp + 2)))
-      {
-        exit(-1);
-      }
       int fd = *(esp + 1);
       void* addr = *(esp + 2);
       f->eax = (uint32_t) mmap(fd, addr);
@@ -201,31 +213,25 @@ syscall_handler (struct intr_frame *f)
     }
     case SYS_MUNMAP:
     {
-      if (!validate_addr((void *) (esp + 1)))
-      {
-        exit(-1);
-      }
       mapid_t mapping = *(esp + 1);
       munmap(mapping);
       break;
     }
     default:
+    invalid_exit();
       break;
   }
 }
 
-/* Terminates Pintos by calling shutdown_power_off() 
-(declared in devices/shutdown.h). */
+//Terminates Pintos by calling shutdown_power_off() (declared in devices/shutdown.h).
+
 void
 halt(void) {
   shutdown_power_off();
 }
 
-/* Terminates the current user program, returning 
-status to the kernel. If the process's parent waits 
-for it (see below), this is the status that will be 
-returned. Conventionally, a status of 0 indicates 
-success and nonzero values indicate errors. */
+//Terminates the current user program, returning status to the kernel.
+
 void
 exit(int status) {
   struct thread *cur = thread_current();
@@ -255,13 +261,8 @@ exit(int status) {
   thread_exit ();
 }
 
-/* Runs the executable whose name is given in cmd_line, 
-passing any given arguments, and returns the new process's 
-program id (pid). Must return pid -1, which otherwise 
-should not be a valid pid, if the program cannot load 
-or run for any reason. Thus, the parent process cannot 
-return from the exec until it knows whether the child 
-process successfully loaded its executable. */
+//Runs the executable whose name is given in cmd_line, passing any given arguments, and returns the new process's program id (pid). 
+
 pid_t
 exec (const char *cmd_line){
   lock_acquire(&file_lock);
@@ -277,17 +278,15 @@ exec (const char *cmd_line){
     return -1;
 }
 
-/* Waits for a child process pid and 
-retrieves the child's exit status. */
+//Waits for a child process pid and retrieves the child's exit status.
+
 int
 wait (pid_t pid){
   return process_wait (pid);
 }
 
-/* Creates a new file called file initially initial_size 
-bytes in size. Returns true if successful, false otherwise. 
-Creating a new file does not open it: opening the new file 
-is a separate operation which would require a open system call. */
+//Creates a new file called file initially initial_size bytes in size. Returns true if successful, false otherwise. 
+
 bool
 create (const char *file, unsigned initial_size){
   check_uadd(file);
@@ -297,8 +296,8 @@ create (const char *file, unsigned initial_size){
   return status;
 }
 
-/* Deletes the file called file. Returns true if successful, 
-false otherwise. */
+//Deletes the file called file. Returns true if successful, false otherwise.
+
 bool
 remove (const char *file){
   check_uadd(file);
@@ -309,10 +308,8 @@ remove (const char *file){
   return status;
 }
 
-/* Opens the file called file. Returns a nonnegative 
-integer handle called a "file descriptor" (fd), 
-or -1 if the file could not be opened.
-File descriptors numbered 0 and 1 are reserved for the console */
+//Opens the file called file. Returns a nonnegative integer handle called a "file descriptor" (fd), or -1 if the file could not be opened.
+
 int
 open (const char *file){
   check_uadd(file);
@@ -331,7 +328,7 @@ open (const char *file){
   return file_desc->fd;
 }
 
-/* Returns the size, in bytes, of the file open as fd. */
+//Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one.
 int
 filesize (int fd){
   int size = -1;
@@ -344,17 +341,38 @@ filesize (int fd){
   }
   return size;
 }
+//Reads size bytes from the file open as fd into buffer. Returns the number of bytes actually read (0 at end of file), or -1 if the file could not be read (due to a condition other than end of file). Fd 0 reads from the keyboard using input_getc().
 
-/* Reads size bytes from the file open as fd into buffer. 
-Returns the number of bytes actually read (0 at end of file), 
-or -1 if the file could not be read (due to a condition other 
-than end of file). Fd 0 reads from the keyboard using input_getc(). */
 int
 read (int fd, void *buffer, unsigned length){
   if (fd == 1)
     return -1;
 
-  check_read_buffer (buffer, length);
+  void *buf_iter = buffer;
+  if (length < PGSIZE)
+  {
+    /* If the read length is less than PGSIZE, 
+       just check the boundaries within the buffer */
+    read_buf_page_fault_handler (buf_iter);
+    read_buf_page_fault_handler (buf_iter + length);
+  }
+  else
+  { 
+    /* If the read length is larger/equal than PGSIZE, 
+       check each possible page boundaries */
+    buf_iter = pg_round_down (buf_iter);
+    unsigned page_count = 0;
+    if (length % PGSIZE == 0)
+      page_count = length / PGSIZE;
+    else
+      page_count = length / PGSIZE + 1;
+    
+    for (int i = 0; i <= page_count; i++)
+    {
+      read_buf_page_fault_handler (buf_iter);
+      buf_iter += PGSIZE;
+    }
+  }
   
   int size = 0;
   struct file_descriptor *file_desc = getfile (thread_current(), fd);
@@ -376,10 +394,8 @@ read (int fd, void *buffer, unsigned length){
   return size;
 }
 
-/* Writes size bytes from buffer to the open file fd. 
-Returns the number of bytes actually written, which 
-may be less than size if some bytes could not be written.
-Fd 1 writes to the console. */
+//Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
+
 int
 write (int fd, const void *buffer, unsigned length){
   if (fd == 0)
@@ -407,9 +423,8 @@ write (int fd, const void *buffer, unsigned length){
   return size;
 }
 
-/* Changes the next byte to be read or written in open 
-file fd to position, expressed in bytes from the beginning 
-of the file. (Thus, a position of 0 is the file's start.) */
+//Changes the next byte to be read or written in open file fd to position, expressed in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
+
 void 
 seek (int fd, unsigned position)
 {
@@ -420,8 +435,8 @@ seek (int fd, unsigned position)
   lock_release (&file_lock);
 }
 
-/* Returns the position of the next byte to be read or written 
-in open file fd, expressed in bytes from the beginning of the file. */
+//Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file.
+
 unsigned 
 tell (int fd)
 {
@@ -434,7 +449,8 @@ tell (int fd)
   return position;  
 }
 
-/* Closes file descriptor fd. */
+//Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one.
+
 void 
 close (int fd)
 {
@@ -557,54 +573,6 @@ bool validate_addr(void *ptr)
   }
   return false;
 }
-
-bool validate_string (char *str)
-{
-  if (str == NULL)
-    return false;
-
-  char *ch = str;
-  while(true)
-  {
-    if (!validate_addr((void *) ch))
-      return false;
-    if (*ch == '\0')
-      return true;
-    ++ch;
-  }
-  return false;
-}
-
-static void
-check_read_buffer (void *buffer, unsigned length)
-{
-  void *buf_iter = buffer;
-  if (length < PGSIZE)
-  {
-    /* If the read length is less than PGSIZE, 
-       just check the boundaries within the buffer */
-    read_buf_page_fault_handler (buf_iter);
-    read_buf_page_fault_handler (buf_iter + length);
-  }
-  else
-  { 
-    /* If the read length is larger/equal than PGSIZE, 
-       check each possible page boundaries */
-    buf_iter = pg_round_down (buf_iter);
-    unsigned page_count = 0;
-    if (length % PGSIZE == 0)
-      page_count = length / PGSIZE;
-    else
-      page_count = length / PGSIZE + 1;
-    
-    for (int i = 0; i <= page_count; i++)
-    {
-      read_buf_page_fault_handler (buf_iter);
-      buf_iter += PGSIZE;
-    }
-  }
-}
-
 
 static void
 read_buf_page_fault_handler (void *fault_addr)
