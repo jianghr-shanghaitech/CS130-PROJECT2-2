@@ -27,17 +27,15 @@ struct frame_table_entry *find_frame_to_evict()
   while(e != end)
   {
     struct frame_table_entry* cur_fte = list_entry (e, struct frame_table_entry, elem);
+    bool is_not_accessed = !(pagedir_is_accessed (cur_thread->pagedir, cur_fte->frame));
 
-    if (!pagedir_is_accessed (cur_thread->pagedir, cur_fte->frame))
-    {
-      return cur_fte;
-    }
+    if (is_not_accessed) return cur_fte;
+
     if (cur_fte->time < least_recent_time)
     {
       least_recent_time = cur_fte->time;
       LRU_fte = cur_fte;
     }
-
     e = list_next(e);
   }
   return LRU_fte;

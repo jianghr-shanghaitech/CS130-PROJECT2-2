@@ -12,15 +12,15 @@ struct list frame_table;
 
 struct frame_table_entry
 {
-  void *frame;                            // kernal addr
+  void *frame;                            
   
   struct list_elem elem;
-  struct supp_page_table_entry *spte;     // corresponding supp_page_table_entry
-  tid_t owner;                            // owner's tid
+  struct supp_page_table_entry *spte;  
+  tid_t owner;                            
   
 
   bool free;
-  int time;                               // latest access time
+  int time;                               
 };
 
 void vm_frame_table_init (void);
