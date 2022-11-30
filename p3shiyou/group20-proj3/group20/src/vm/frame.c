@@ -4,11 +4,12 @@
 #include "devices/timer.h"
 #include "userprog/syscall.h"
 
-struct lock frame_lock;
+struct lock frame_lock; // lock for frame table
 
 void *evict_frame (struct supp_page_table_entry *spte);
 struct frame_table_entry *find_frame_to_evict();
 
+// init frame
 void 
 vm_frame_table_init (void)
 {
@@ -21,46 +22,35 @@ struct frame_table_entry *find_frame_to_evict()
   struct thread *cur_thread = thread_current();
   struct list_elem* e = list_begin(&frame_table);
   struct list_elem* end = list_end(&frame_table);
-  int64_t least_recent_time = INT64_MAX;
-  struct frame_table_entry *LRU_fte = NULL;
+  int64_t least_recent_time;
+  struct frame_table_entry *LRU_fte;
 
-  while(e != end)
-  {
+  for(struct list_elem* e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e)){
     struct frame_table_entry* cur_fte = list_entry (e, struct frame_table_entry, elem);
-
-    /* If current page is not accessed, evict it */
     if (!pagedir_is_accessed (cur_thread->pagedir, cur_fte->frame))
     {
       return cur_fte;
     }
-    /* If the current fte has less time, update LRU_fte */
-    if (cur_fte->time < least_recent_time)
+    // find the latest used frame
+    if(e == list_begin(&frame_table)){
+      least_recent_time = cur_fte->time;
+      LRU_fte = cur_fte;
+    }
+    else if (cur_fte->time < least_recent_time)
     {
       least_recent_time = cur_fte->time;
       LRU_fte = cur_fte;
     }
-
-    e = list_next(e);
   }
   return LRU_fte;
 }
 
 
-/* Evict a frame for spte */
+// evict a frame for spte
 void * 
 evict_frame(struct supp_page_table_entry *spte)
 {
-  /* Find a frame to evict */
   lock_acquire(&frame_lock);
-
-  ///* Randomly */
-  //struct list_elem* e = list_begin(&frame_table);
-  //for(int i = 0; i < timer_ticks() % list_size(&frame_table); i++)
-  //{
-  //  e = list_next(e);
-  //}
-  //struct frame_table_entry *evicted_fte = list_entry (e, struct frame_table_entry, elem);
-
   struct frame_table_entry *evicted_fte = find_frame_to_evict();
 
   /* Evict this frame */
@@ -69,7 +59,6 @@ evict_frame(struct supp_page_table_entry *spte)
   void *evicted_frame = evicted_fte->frame;
   void *evicted_upage = victim_spte->addr;
   lock_acquire(&spte->spte_lock);
-  //lock_acquire(&victim_spte->spte_lock);
   pagedir_is_dirty (victim_thread->pagedir, evicted_upage);
 
   /* If the page is dirty (modified), write it back to file */

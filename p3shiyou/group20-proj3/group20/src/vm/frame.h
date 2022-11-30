@@ -12,12 +12,15 @@ struct list frame_table;
 
 struct frame_table_entry
 {
-  void *frame;                            /* Actual frame addr */
-  int time;                               /* Last access time */
-  struct supp_page_table_entry *spte;     /* Corresponding supp_page_table_entry */
-  tid_t owner;                            /* The tid of the thread which owns this frame */
-  bool free;                              /* If the page is freed, set it to true */
+  void *frame;                            // kernal addr
+  
   struct list_elem elem;
+  struct supp_page_table_entry *spte;     // corresponding supp_page_table_entry
+  tid_t owner;                            // owner's tid
+  
+
+  bool free;
+  int time;                               // latest access time
 };
 
 void vm_frame_table_init (void);
