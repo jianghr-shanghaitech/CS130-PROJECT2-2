@@ -152,30 +152,16 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* if the fault is cause by user accessing an invalid address or read-only address, 
-      exit(-1) instead of PANIC. --proj2 & proj3*/
+
    if (fault_addr == NULL || (is_kernel_vaddr (fault_addr) && user) || !not_present)
       exit (-1);
 
    bool success = false;
-   /* Find supp_page_table_entry spte in supp_page_table */
    struct supp_page_table_entry *spte = find_spte (&thread_current ()->supp_page_table, fault_addr);
    
-   if (spte != NULL )
-   {
-      /* If found, load the page or find it in swap */
-      if(spte->type == PAGE_TYPE_SWAP)
-        success = page_swap_in (spte);
-      else
-        success = page_load_file (spte);
-   }
-   else
-   {
-      /* If not found, try grow the stack if the fault address is valid */
-      if ((fault_addr >= PHYS_BASE - STACK_LIMIT) && (fault_addr >= f->esp - 32))
-         success = stack_grow (fault_addr);
-   }
-   /* Not handled */
+   if (spte != NULL ) success = load_swap(spte);
+   else if ((fault_addr >= PHYS_BASE - STACK_LIMIT) && (fault_addr >= f->esp - 32)) success = stack_grow (fault_addr);
+
    if (!success)
       exit (-1);
       

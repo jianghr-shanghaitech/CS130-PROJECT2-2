@@ -239,13 +239,19 @@ process_exit (void)
 
   /* Free mmap list */
   free_all_mmap (&cur->mmap_list);
-  /* Free the supplementary page table. */
-  free_supp_page_table (&cur->supp_page_table);
-  /* Free all frames */
-  //vm_clear_process_frame_table (cur->tid);
 
-  /* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. */
+void
+page_hash_free (struct hash_elem *e, void *aux UNUSED)
+{
+  struct supp_page_table_entry* spte = hash_entry (e, struct supp_page_table_entry, hash_elem);
+  if(spte->frame)
+    vm_free_frame(spte->frame);
+  free (spte);
+}
+
+  hash_destroy (&cur->supp_page_table, page_hash_free);
+
+
   pd = cur->pagedir;
   if (pd != NULL) 
   {

@@ -395,32 +395,32 @@ read (int fd, void *buffer, unsigned length){
 }
 
 //Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
-
 int
 write (int fd, const void *buffer, unsigned length){
   if (fd == 0)
     return -1;
-
-  if(!validate_addr((void *) buffer)){
-    exit(-1);
-  }
-  int size = 0 ;
-
-  
-  if (fd == 1)
-  { 
+  else if (fd == 1)
+  {
+    check_uadd(buffer);
+    int size = 0 ;
     putbuf ((char *)buffer, (size_t)length);
     return length;
   }
-  struct file_descriptor* file_desc = getfile (thread_current(), fd);
-  if (file_desc == NULL || file_desc->file == NULL)
+  else
+  {
+    check_uadd(buffer);
+    int size = 0 ;
+    struct file_descriptor* file_desc = getfile (thread_current(), fd);
+    if (file_desc == NULL || file_desc->file == NULL)
     return -1;
   
-  lock_acquire (&file_lock);
-  size = file_write (file_desc->file, buffer, length);
-  lock_release (&file_lock);
-  
-  return size;
+    lock_acquire (&file_lock);
+    size = file_write (file_desc->file, buffer, length);
+    lock_release (&file_lock);
+
+    return size;
+  }
+
 }
 
 //Changes the next byte to be read or written in open file fd to position, expressed in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)
@@ -465,20 +465,23 @@ close (int fd)
   lock_release (&file_lock);
 }
 
+void set_mmap(struct vm_mmap *mmap,struct file * file,uint8_t * addr,uint32_t file_size)
+{
+  mmap->file=file;
+  mmap->upage=addr;
+  mmap->read_bytes=file_size;
+  
+  thread_current()->mmap_num+=1;
+  mmap->mapping_id=(mapid_t*)thread_current()->mmap_num;
+}
+
 mapid_t 
 mmap (int fd, void *addr){
-  if(fd<2){
-    return -1;
-  }
-  if((uint32_t)addr % PGSIZE != 0||addr==0){
-    return -1;
-  }
   struct thread *cur_thread=thread_current();
   struct file_descriptor *file_desc = getfile (cur_thread, fd);
+  uint32_t offset;
+  if((fd < 2)  || ((uint32_t)addr % PGSIZE != 0||addr==0) || (file_desc == NULL || file_desc->file == NULL)) return -1;
 
-  if (file_desc == NULL || file_desc->file == NULL){
-    return -1;
-  }
 
   lock_acquire (&file_lock);
   struct file *file = file_reopen (file_desc->file);
@@ -488,32 +491,18 @@ mmap (int fd, void *addr){
   }
 
   uint32_t file_size=file_length(file);
-  if(file_size<=0){
-    return -1;
-  }
-  uint32_t offset;
-  for(offset=0;offset<file_size;offset+=PGSIZE){
-    if (find_spte (&cur_thread->supp_page_table, addr + offset) ||pagedir_get_page (cur_thread->pagedir, addr + offset)){
-      return -1;
-    }
-  }
   struct vm_mmap *mmap=malloc(sizeof(struct vm_mmap));
-  if(mmap ==NULL){
-    return -1;
-  }
-  mmap->file=file;
-  mmap->upage=addr;
-  mmap->read_bytes=file_size;
-  
-  cur_thread->mmap_num+=1;
-  mmap->mapping_id=(mapid_t*)cur_thread->mmap_num;
 
+  for(offset=0;offset<file_size;offset+=PGSIZE) if (find_spte (&cur_thread->supp_page_table, addr + offset) ||pagedir_get_page (cur_thread->pagedir, addr + offset) || (file_size==0) || (!mmap)) return -1;
+
+  set_mmap(mmap,file,addr,file_size);
 
   if(page_lazy_load(file,0,addr,file_size,(offset-file_size),true,PAGE_TYPE_MMAP)==false){
     return -1;
   }
   list_push_back(&cur_thread->mmap_list,&mmap->elem);
-  return mmap->mapping_id;
+  auto id = mmap->mapping_id;
+  return id;
 }
 
 void 
@@ -527,19 +516,35 @@ munmap(mapid_t mapping){
       break;
     }
   }
-  free_single_mmap(mmap);
+    struct supp_page_table_entry *spte;
+    unsigned i = 0;
+    
+    while(i <  mmap->read_bytes){
+        void *upage = mmap->upage + i;
+        spte = find_spte (&thread_current ()->supp_page_table, upage);
+        lock_acquire (&spte->spte_lock);
+    
+    if (pagedir_is_dirty (thread_current ()->pagedir, upage)){ 
+      lock_acquire (&file_lock);
+      file_write_at (spte->file, upage, spte->read_bytes, spte->offset);
+      lock_release (&file_lock);
+    }
+
+    if (spte->frame){       
+      vm_free_frame (pagedir_get_page (thread_current ()->pagedir, spte->addr));
+      pagedir_clear_page (thread_current ()->pagedir, spte->addr);
+    }
+
+    hash_delete (&thread_current ()->supp_page_table, &spte->hash_elem); 
+    lock_release (&spte->spte_lock);
+    i+=PGSIZE;
+  }
+  file_close (mmap->file);
   list_remove(iter);
   free(mmap);
 }
 
 
-
-
-
-
-/*------------------------- Helper functions -------------------------*/
-
-/* Return the file by given fd in the given thread */
 struct file_descriptor*
 getfile (struct thread *t, int fd)
 {
@@ -555,23 +560,55 @@ getfile (struct thread *t, int fd)
   return NULL;
 }
 
-bool validate_addr(void *ptr)
+bool load_swap(struct supp_page_table_entry *spte)
 {
-  if (ptr == NULL)
-    return false;
-  else
-  {
-    int byte_count = 0;
-    for (int i = 0; i < 4; i++)
-    {
-      /* If every byte of ptr < PHYS_BASE and if belongs to current thread */
-      if (is_user_vaddr(ptr+i) && (pagedir_get_page(thread_current()->pagedir, ptr+i) != NULL))
-        byte_count++;
+  if(spte->type == PAGE_TYPE_SWAP)
+        {
+   void *frame = vm_get_frame (PAL_USER, spte);
+   if(!frame) return false;
+   
+   lock_acquire (&spte->spte_lock);
+   
+   swap_in (frame, spte->swap_id);
+   
+   spte->type = PAGE_TYPE_FILE;
+   spte->frame = frame;
+   
+   if (!install_page (spte->addr, frame, spte->writable))
+   {
+     vm_free_frame (frame);
+     return false;
+   }
+   
+   lock_release (&spte->spte_lock);
+    return  true;
     }
-    if (byte_count == 4)
-      return true;
-  }
-  return false;
+    else
+    {
+    void *frame = vm_get_frame (PAL_USER, spte);
+    if(!frame) return false;
+    lock_acquire (&spte->spte_lock);
+    lock_acquire (&file_lock);
+    file_seek (spte->file, spte->offset);
+
+
+    if(file_read (spte->file, frame, spte->read_bytes) != (int) spte->read_bytes)
+    {
+      vm_free_frame (frame);
+      lock_release (&file_lock);
+      return false;
+    }
+    lock_release (&file_lock);
+    memset (frame + spte->read_bytes, 0, spte->zero_bytes);
+    if (!install_page (spte->addr, frame, spte->writable))
+    {
+      vm_free_frame (frame);
+      return false;
+    } 
+      spte->frame = frame;
+      lock_release (&spte->spte_lock);
+     return true;
+    }
 }
 
 static void
@@ -583,30 +620,14 @@ read_buf_page_fault_handler (void *fault_addr)
   struct thread *cur = thread_current ();
   bool success = false;
 
-  /* Check if the addr is mapped to kernal addr */
   if (pagedir_get_page (cur->pagedir, fault_addr) == NULL)
   {
-    /* If not mapped, handle it, try find and load */
     struct supp_page_table_entry *spte;
     spte = find_spte (&cur->supp_page_table, fault_addr);
-    if (spte != NULL)
-    {
-      /* If found, load the page or find it in swap */
-      if(spte->type == PAGE_TYPE_SWAP)
-        success = page_swap_in (spte);
-      else
-        success = page_load_file (spte);
-    }
-    else
-    {
-      //printf("%u\n", fault_addr);
-      /* If not found, try grow the stack if the fault address is valid */
-      if (fault_addr >= intr_f->esp - 32)
-        success = stack_grow (fault_addr);
-    }
-    if (!success)
-      exit (-1);      
+    if (spte != NULL) success = load_swap(spte);
+    else if  (fault_addr >= intr_f->esp - 32) success = stack_grow (fault_addr);
+    if (!success) exit (-1);      
   }
   else
-    return;     /* If mapped, do nothing */
+    return;
 }
