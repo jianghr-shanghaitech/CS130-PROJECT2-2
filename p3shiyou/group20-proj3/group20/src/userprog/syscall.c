@@ -510,21 +510,26 @@ munmap(mapid_t mapping){
   struct thread *cur_thread=thread_current();
   struct list_elem *iter=list_begin(&cur_thread->mmap_list);
   struct vm_mmap *mmap;
-  for(iter;iter!=list_end(&cur_thread->mmap_list);iter=list_next(iter)){
+  auto end = list_end(&cur_thread->mmap_list);
+  while(iter!=end)
+  {
     mmap=list_entry(iter,struct vm_mmap,elem);
-    if(mmap->mapping_id==mapping){
+    if(mmap->mapping_id == mapping){
       break;
     }
+    iter=list_next(iter);
   }
     struct supp_page_table_entry *spte;
     unsigned i = 0;
     
-    while(i <  mmap->read_bytes){
-        void *upage = mmap->upage + i;
-        spte = find_spte (&thread_current ()->supp_page_table, upage);
-        lock_acquire (&spte->spte_lock);
+    while(i < mmap->read_bytes)
+    {
+      void *upage = mmap->upage + i;
+      spte = find_spte (&thread_current ()->supp_page_table, upage);
+      lock_acquire (&spte->spte_lock);
     
-    if (pagedir_is_dirty (thread_current ()->pagedir, upage)){ 
+    if (pagedir_is_dirty (thread_current ()->pagedir, upage))
+    { 
       lock_acquire (&file_lock);
       file_write_at (spte->file, upage, spte->read_bytes, spte->offset);
       lock_release (&file_lock);
@@ -551,11 +556,13 @@ getfile (struct thread *t, int fd)
   struct list_elem *e = NULL;
   struct list *l = &t->fd_list;
   struct file_descriptor *file_desc = NULL;
-  for (e = list_begin (l); e != list_end (l); e = list_next (e))
+  e = list_begin (l);
+  while (e != list_end (l))
   {
     file_desc = list_entry (e, struct file_descriptor, elem);
     if (file_desc->fd == fd)
       return file_desc;
+    e = list_next (e);
   }
   return NULL;
 }
@@ -563,7 +570,7 @@ getfile (struct thread *t, int fd)
 bool load_swap(struct supp_page_table_entry *spte)
 {
   if(spte->type == PAGE_TYPE_SWAP)
-        {
+  {
    void *frame = vm_get_frame (PAL_USER, spte);
    if(!frame) return false;
    
@@ -614,16 +621,15 @@ bool load_swap(struct supp_page_table_entry *spte)
 static void
 read_buf_page_fault_handler (void *fault_addr)
 {
-  if (fault_addr == NULL || !is_user_vaddr (fault_addr))
+  if (fault_addr == NULL ||!is_user_vaddr (fault_addr))
     exit (-1);
 
   struct thread *cur = thread_current ();
   bool success = false;
 
-  if (pagedir_get_page (cur->pagedir, fault_addr) == NULL)
+  if (!pagedir_get_page (cur->pagedir, fault_addr))
   {
-    struct supp_page_table_entry *spte;
-    spte = find_spte (&cur->supp_page_table, fault_addr);
+    struct supp_page_table_entry *spte = find_spte (&cur->supp_page_table, fault_addr);;
     if (spte != NULL) success = load_swap(spte);
     else if  (fault_addr >= intr_f->esp - 32) success = stack_grow (fault_addr);
     if (!success) exit (-1);      

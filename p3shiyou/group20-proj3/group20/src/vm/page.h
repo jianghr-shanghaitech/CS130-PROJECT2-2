@@ -18,17 +18,17 @@
 
 struct supp_page_table_entry
 {
-    struct file *file;            /* File to load */
-    off_t offset;                 /* File offset */
-    void *addr;                   /* User virtual address, key to he hash table */
-    uint32_t read_bytes;          /* Bytes to read from file after offset */
-    uint32_t zero_bytes;          /* Bytes to be zeroed, after read bytes */
-    bool writable;                /* Whether the page is writable */
-    size_t swap_id;               /* Index on swap bitmap returned by swap_out() */
-    struct lock spte_lock;        /* Lock in case synchronization */
-    int type;                     /* Type of this page */
-    void* frame;                  /* Corresponding frame addr, NULL means not loaded frame */
-    struct hash_elem hash_elem;   /* Hash table element */
+    struct file *file;            
+    off_t offset;                 
+    void *addr;                   
+    uint32_t read_bytes;          
+    uint32_t zero_bytes;          
+    bool writable;                
+    size_t swap_id;               
+    struct lock spte_lock;        
+    int type;                    
+    void* frame;                  
+    struct hash_elem hash_elem;   
 };
 
 void supp_page_table_init(struct hash *);

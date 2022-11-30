@@ -91,6 +91,21 @@ process_execute (const char *file_name)
   return tid;
 }
 
+unsigned
+page_hash_func(const struct hash_elem *e, void *aux)
+{
+  const struct supp_page_table_entry * spte = hash_entry (e, struct supp_page_table_entry, hash_elem);
+  return hash_bytes (&spte->addr, sizeof (spte->addr));
+}
+
+bool
+page_hash_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED)
+{
+  const struct supp_page_table_entry *a = hash_entry (a_, struct supp_page_table_entry, hash_elem);
+  const struct supp_page_table_entry *b = hash_entry (b_, struct supp_page_table_entry, hash_elem);
+  return a->addr < b->addr;
+}
+
 /* A thread function that loads a user process and starts it
    running. */
 static void
@@ -100,7 +115,7 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
-  supp_page_table_init(&thread_current()->supp_page_table);
+    hash_init(&thread_current()->supp_page_table, page_hash_func, page_hash_less, NULL);
   
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);

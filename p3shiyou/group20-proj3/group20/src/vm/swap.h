@@ -6,9 +6,8 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 
-static struct block* swap_block;
 static struct bitmap *swap_bitmap;
-
+#define SECTORS_PER_PAGE (PGSIZE / BLOCK_SECTOR_SIZE)
 
 void swap_init (void);
 void swap_in (void *, int);

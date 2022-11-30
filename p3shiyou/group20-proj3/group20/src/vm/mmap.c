@@ -6,7 +6,6 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
-//free the first mmap until the mmap_list is empty
 
 void 
 free_all_mmap(struct list *mmap_list){
@@ -16,7 +15,7 @@ free_all_mmap(struct list *mmap_list){
     struct supp_page_table_entry *spte;
     unsigned i = 0;
     
-    while(i <  mmap->read_bytes){
+    while(i < mmap->read_bytes){
         void *upage = mmap->upage + i;
         spte = find_spte (&cur_thread->supp_page_table, upage);
         lock_acquire (&spte->spte_lock);
