@@ -264,18 +264,16 @@ exit(int status) {
 //Runs the executable whose name is given in cmd_line, passing any given arguments, and returns the new process's program id (pid). 
 
 pid_t
-exec (const char *cmd_line){
+exec (const char *cmd_line)
+{
+  check_uadd(cmd_line);
   lock_acquire(&file_lock);
-  pid_t pid = process_execute(cmd_line);
+  int pid = process_execute(cmd_line);
   lock_release(&file_lock);
-
-  struct thread *cur = thread_current();
-  sema_down(&(cur->load_sema));
-
-  if (cur->load_state == LOAD_SUCCESS)
-    return pid;
-  else
-    return -1;
+  sema_down(&(thread_current()->load_sema));
+  auto state = thread_current()->load_state;
+  if (state == LOAD_SUCCESS) return pid;
+  else    return -1;
 }
 
 //Waits for a child process pid and retrieves the child's exit status.
