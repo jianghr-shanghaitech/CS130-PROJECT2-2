@@ -180,17 +180,13 @@ process_wait (tid_t child_tid)
       while (e != child_list_end)
       {
         child = list_entry (e, struct child_status, child_elem);
-        /* If the child is found and is not waiting for the child */
         if (child->child_tid == child_tid && !child->child_waited)
         {
-          /* Wait until finish */
           sema_down (&child->child_wait_sema);
           child->child_waited = true;
 
-          /* Return child exit status after it is finished */
           return child->child_exit_code;
         }
-        /* If the child is found but is already waiting, ERROR! */
         else if (child->child_tid == child_tid && child->child_waited)
         {
           return -1;
@@ -198,21 +194,25 @@ process_wait (tid_t child_tid)
         e = list_next(e);
       }
     }
-    /* No legal child found, including child_tid points to indirect decendends, ERROR! */
     return -1; 
   }
 }
 
-/* Free the current process's resources. */
+bool free_all()
+{
+  free_child_list (thread_current ());
+  free_opened_file (thread_current ());
+  free_all_mmap (&thread_current ()->mmap_list);
+}
+
 void
 process_exit (void)
 {
-  struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  printf("%s: exit(%d)\n", cur->name, cur->exit_code);
+  printf("%s: exit(%d)\n", thread_current ()->name, thread_current ()->exit_code);
 
-  struct thread *parent_thread = thread_get_by_tid(cur->parent_tid);
+  struct thread *parent_thread = thread_get_by_tid(thread_current ()->parent_tid);
   if (parent_thread)
   {
     if(list_empty (&parent_thread->child_thread_list))
@@ -221,7 +221,6 @@ process_exit (void)
     }
     else 
     {
-      /* Wake up the parent by signaling sema of the corresponding child */
       struct list_elem *e = list_begin (&parent_thread->child_thread_list);
       struct child_status *child;
       struct list_elem *child_list_end = list_end (&parent_thread->child_thread_list);
@@ -229,9 +228,8 @@ process_exit (void)
       while (e != child_list_end)
       {
         child = list_entry (e, struct child_status, child_elem);
-        if (child->child_tid == cur->tid)
+        if (child->child_tid == thread_current ()->tid)
         {
-          /* If find the child, wake up by sema_up */
           sema_up (&child->child_wait_sema);
           break;
         }
@@ -240,20 +238,13 @@ process_exit (void)
     }
   }
 
-  /* The loaded file can be written after exit */
-  if (cur->running_file != NULL)
+  if (thread_current ()->running_file != NULL)
   {
-    file_allow_write (cur->running_file);
-    file_close (cur->running_file);
+    file_allow_write (thread_current ()->running_file);
+    file_close (thread_current ()->running_file);
   }
 
-  /* Free child_thread_list */
-  free_child_list (cur);
-  /* Free opened file resource */
-  free_opened_file (cur);
-
-  /* Free mmap list */
-  free_all_mmap (&cur->mmap_list);
+  free_all();
 
 void
 page_hash_free (struct hash_elem *e, void *aux UNUSED)
@@ -264,20 +255,13 @@ page_hash_free (struct hash_elem *e, void *aux UNUSED)
   free (spte);
 }
 
-  hash_destroy (&cur->supp_page_table, page_hash_free);
+  hash_destroy (&thread_current ()->supp_page_table, page_hash_free);
 
 
-  pd = cur->pagedir;
+  pd = thread_current ()->pagedir;
   if (pd != NULL) 
   {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
+      thread_current ()->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
   }

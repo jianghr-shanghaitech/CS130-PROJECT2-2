@@ -31,11 +31,8 @@ struct supp_page_table_entry
     struct hash_elem hash_elem;   
 };
 
-void supp_page_table_init(struct hash *);
 struct supp_page_table_entry *find_spte (struct hash *, uint8_t *);
-
+struct file_descriptor* getfile (struct thread *t, int fd);
 bool page_lazy_load (struct file *, off_t, uint8_t *, uint32_t, uint32_t, bool, int);
-bool page_swap_in (struct supp_page_table_entry *);
-
 bool stack_grow (void *);
 #endif

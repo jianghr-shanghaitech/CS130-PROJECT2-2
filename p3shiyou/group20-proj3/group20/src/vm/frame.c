@@ -6,9 +6,6 @@
 
 struct lock frame_lock;
 
-void *evict_frame (struct supp_page_table_entry *spte);
-struct frame_table_entry *find_frame_to_evict();
-
 void 
 vm_frame_table_init (void)
 {
@@ -16,8 +13,26 @@ vm_frame_table_init (void)
   lock_init (&frame_lock);
 }
 
-struct frame_table_entry *find_frame_to_evict()
+
+void set_ft(struct frame_table_entry *ft_entry,void *frame,struct supp_page_table_entry *spte)
 {
+  ft_entry->frame = frame;
+  ft_entry->owner = thread_tid();
+  ft_entry->time = timer_ticks();
+  ft_entry->spte = spte;
+  ft_entry->free = false;
+}
+
+void *
+vm_get_frame (enum palloc_flags flags, struct supp_page_table_entry *spte)
+{
+    if(flags != PAL_USER) return NULL;
+    void *frame = palloc_get_page (flags);
+    if(!frame)
+    {
+        lock_acquire(&frame_lock);
+  struct frame_table_entry *evicted_fte;
+
   struct thread *cur_thread = thread_current();
   struct list_elem* e = list_begin(&frame_table);
   struct list_elem* end = list_end(&frame_table);
@@ -29,7 +44,7 @@ struct frame_table_entry *find_frame_to_evict()
     struct frame_table_entry* cur_fte = list_entry (e, struct frame_table_entry, elem);
     bool is_not_accessed = !(pagedir_is_accessed (cur_thread->pagedir, cur_fte->frame));
 
-    if (is_not_accessed) return cur_fte;
+    if (is_not_accessed) evicted_fte = cur_fte;
 
     if (cur_fte->time < least_recent_time)
     {
@@ -38,16 +53,7 @@ struct frame_table_entry *find_frame_to_evict()
     }
     e = list_next(e);
   }
-  return LRU_fte;
-}
-
-
-void * 
-evict_frame(struct supp_page_table_entry *spte)
-{
-  lock_acquire(&frame_lock);
-
-  struct frame_table_entry *evicted_fte = find_frame_to_evict();
+  evicted_fte = LRU_fte;
 
   struct thread *victim_thread = thread_get_by_tid(evicted_fte->owner);
   struct supp_page_table_entry *victim_spte = evicted_fte->spte;
@@ -79,23 +85,7 @@ evict_frame(struct supp_page_table_entry *spte)
   lock_release(&spte->spte_lock);
   lock_release(&frame_lock);
   return evicted_frame;
-}
-
-void set_ft(struct frame_table_entry *ft_entry,void *frame,struct supp_page_table_entry *spte)
-{
-  ft_entry->frame = frame;
-  ft_entry->owner = thread_tid();
-  ft_entry->time = timer_ticks();
-  ft_entry->spte = spte;
-  ft_entry->free = false;
-}
-
-void *
-vm_get_frame (enum palloc_flags flags, struct supp_page_table_entry *spte)
-{
-    if(flags != PAL_USER) return NULL;
-    void *frame = palloc_get_page (flags);
-    if(!frame) return evict_frame(spte);
+  }
 
     struct frame_table_entry *ft_entry = malloc (sizeof (struct frame_table_entry));
     if (!ft_entry) return NULL;

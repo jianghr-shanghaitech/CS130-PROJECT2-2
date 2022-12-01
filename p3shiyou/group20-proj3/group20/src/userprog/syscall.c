@@ -79,8 +79,7 @@ void read_user(void* ptr, void* rt, size_t size){
 }
 
 static void syscall_handler (struct intr_frame *);
-static struct file_descriptor *getfile (struct thread *t, int fd);
-static void read_buf_page_fault_handler (void *fault_addr);
+static void buf_exception (void *fault_addr);
 
 static const struct intr_frame *intr_f;
 
@@ -226,38 +225,31 @@ syscall_handler (struct intr_frame *f)
 //Terminates Pintos by calling shutdown_power_off() (declared in devices/shutdown.h).
 
 void
-halt(void) {
-  shutdown_power_off();
-}
+halt(void) {shutdown_power_off();}
 
 //Terminates the current user program, returning status to the kernel.
 
 void
 exit(int status) {
-  struct thread *cur = thread_current();
-  struct thread *parent = thread_get_by_tid(cur->parent_tid);
-  cur->exit_code = status;
+  struct thread *parent = thread_get_by_tid(thread_current()->parent_tid);
+  thread_current()->exit_code = status;
 
-  /* Give child's exit info to parent */
   if (parent != NULL && !list_empty(&parent->child_thread_list))
   {
-    struct list_elem *e = list_begin (&parent->child_thread_list);
-    struct child_status *this_child;
+    struct list_elem *begin = list_begin (&parent->child_thread_list);
+    struct child_status *child;
     struct list_elem *child_list_end = list_end (&parent->child_thread_list);
 
-    while (e != child_list_end)
+    for (struct list_elem *e = begin;e != child_list_end;e = list_next (e))
     {
-      this_child = list_entry (e, struct child_status, child_elem);
-      if (this_child->child_tid == cur->tid)
+      child = list_entry (e, struct child_status, child_elem);
+      if (child->child_tid == thread_current()->tid)
       {
-          /* If find the child, set exit_code for this_child */
-          this_child->child_exit_code = status;
+          child->child_exit_code = status;
           break;
       }
-      e = list_next (e);
     }
   }
-
   thread_exit ();
 }
 
@@ -311,83 +303,72 @@ remove (const char *file){
 int
 open (const char *file){
   check_uadd(file);
-  struct file_descriptor *file_desc = malloc (sizeof (struct file_descriptor));
-  struct thread *cur = thread_current ();
-  lock_acquire (&file_lock);
-  struct file *f = filesys_open (file);
-  lock_release (&file_lock);
-  
-  if (f == NULL)
+  lock_acquire(&file_lock);
+  struct file_desc* fd = palloc_get_page(0);
+  if (!fd) return -1;
+  struct file* file_opened = filesys_open(file);
+  if (!file_opened) {
+    palloc_free_page (fd);
+    lock_release (&file_lock);
     return -1;
-  
-  file_desc->file = f;
-  file_desc->fd = cur->file_num++;
-  list_push_back (&cur->fd_list, &file_desc->elem);
-  return file_desc->fd;
+  }
+
+  struct thread * t = thread_current();
+  if (file_opened)
+  {
+    struct thread_file *thread_file_temp = malloc(sizeof(struct thread_file));
+    thread_file_temp->fd = t->file_num++;
+    thread_file_temp->file = file_opened;
+    list_push_back (&t->fd_list, &thread_file_temp->file_elem);
+    lock_release (&file_lock);
+    return thread_file_temp->fd;;
+  }
+  else{
+    lock_release (&file_lock);
+    return -1;
+  }
 }
 
-//Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one.
-int
-filesize (int fd){
-  int size = -1;
-  struct file_descriptor *file_desc = getfile (thread_current(), fd);
-  if (file_desc != NULL)
-  {
-    lock_acquire (&file_lock);
-    size = file_length (file_desc->file);
-    lock_release (&file_lock);
-  }
-  return size;
-}
 //Reads size bytes from the file open as fd into buffer. Returns the number of bytes actually read (0 at end of file), or -1 if the file could not be read (due to a condition other than end of file). Fd 0 reads from the keyboard using input_getc().
 
 int
-read (int fd, void *buffer, unsigned length){
+read (int fd, void *buffer, unsigned length)
+{
   if (fd == 1)
     return -1;
-
-  void *buf_iter = buffer;
-  if (length < PGSIZE)
-  {
-    /* If the read length is less than PGSIZE, 
-       just check the boundaries within the buffer */
-    read_buf_page_fault_handler (buf_iter);
-    read_buf_page_fault_handler (buf_iter + length);
-  }
-  else
-  { 
-    /* If the read length is larger/equal than PGSIZE, 
-       check each possible page boundaries */
-    buf_iter = pg_round_down (buf_iter);
-    unsigned page_count = 0;
-    if (length % PGSIZE == 0)
-      page_count = length / PGSIZE;
-    else
-      page_count = length / PGSIZE + 1;
-    
-    for (int i = 0; i <= page_count; i++)
-    {
-      read_buf_page_fault_handler (buf_iter);
-      buf_iter += PGSIZE;
-    }
-  }
-  
-  int size = 0;
-  struct file_descriptor *file_desc = getfile (thread_current(), fd);
-
-  if (fd == 0)
+  else if (fd == 0)
   {
     uint8_t *buf = buffer;
     for (unsigned int i = 0; i < length; i++)
       buf[i] = input_getc ();
     return length;
   }
+  int i = 0; 
+
+  void *buf_iter = buffer;
+  if (length < PGSIZE) buf_exception (buf_iter);
+  else
+  { 
+    buf_iter = pg_round_down (buf_iter);
+    unsigned page_count = 0;
+    page_count = (length % PGSIZE == 0) ?  (length / PGSIZE) :  (length / PGSIZE + 1);
+    
+    while (i <= page_count)
+    {
+      buf_exception (buf_iter);
+      buf_iter += PGSIZE;
+      i++;
+    }
+  }
   
-  if (file_desc == NULL || file_desc->file == NULL)
+  struct file_descriptor *file_desc = getfile (thread_current(), fd);
+
+  
+  if (!file_desc || !file_desc->file)
     return -1;
 
   lock_acquire (&file_lock);
-  size = file_read (file_desc->file, buffer, length);
+  int size = file_read (file_desc->file, buffer, length);
   lock_release (&file_lock);
   return size;
 }
@@ -395,9 +376,7 @@ read (int fd, void *buffer, unsigned length){
 //Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
 int
 write (int fd, const void *buffer, unsigned length){
-  if (fd == 0)
-    return -1;
-  else if (fd == 1)
+  if (fd == 1)
   {
     check_uadd(buffer);
     int size = 0 ;
@@ -409,7 +388,7 @@ write (int fd, const void *buffer, unsigned length){
     check_uadd(buffer);
     int size = 0 ;
     struct file_descriptor* file_desc = getfile (thread_current(), fd);
-    if (file_desc == NULL || file_desc->file == NULL)
+    if (!file_desc || !file_desc->file)
     return -1;
   
     lock_acquire (&file_lock);
@@ -438,13 +417,17 @@ seek (int fd, unsigned position)
 unsigned 
 tell (int fd)
 {
-  unsigned position = -1;
-  struct file_descriptor *file_desc = getfile (thread_current(), fd);
-  lock_acquire (&file_lock);
-  if (file_desc != NULL)
-    position = (unsigned) file_tell (file_desc->file);  
-  lock_release (&file_lock);
-  return position;  
+  struct thread_file *thread_file_temp = getfile (thread_current(),fd);
+  int rt;
+  if (thread_file_temp)
+  {
+    lock_acquire(&file_lock);
+    rt = file_tell (thread_file_temp->file);
+    lock_release(&file_lock);
+  }else{
+    rt = -1;
+  }
+  return rt;
 }
 
 //Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one.
@@ -463,14 +446,18 @@ close (int fd)
   lock_release (&file_lock);
 }
 
-void set_mmap(struct vm_mmap *mmap,struct file * file,uint8_t * addr,uint32_t file_size)
-{
-  mmap->file=file;
-  mmap->upage=addr;
-  mmap->read_bytes=file_size;
-  
-  thread_current()->mmap_num+=1;
-  mmap->mapping_id=(mapid_t*)thread_current()->mmap_num;
+//Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one.
+int
+filesize (int fd){
+  int size = -1;
+  struct file_descriptor *file_desc = getfile (thread_current(), fd);
+  if (file_desc != NULL)
+  {
+    lock_acquire (&file_lock);
+    size = file_length (file_desc->file);
+    lock_release (&file_lock);
+  }
+  return size;
 }
 
 mapid_t 
@@ -478,15 +465,13 @@ mmap (int fd, void *addr){
   struct thread *cur_thread=thread_current();
   struct file_descriptor *file_desc = getfile (cur_thread, fd);
   uint32_t offset;
-  if((fd < 2)  || ((uint32_t)addr % PGSIZE != 0||addr==0) || (file_desc == NULL || file_desc->file == NULL)) return -1;
-
+  if((fd - 2 < 0)  || ((uint32_t)addr % PGSIZE != 0||addr==0) || (file_desc == NULL || file_desc->file == NULL)) return -1;
 
   lock_acquire (&file_lock);
   struct file *file = file_reopen (file_desc->file);
   lock_release (&file_lock);
-  if (file == NULL){
-    return -1;
-  }
+  if (!file) return -1;
+
 
   uint32_t file_size=file_length(file);
   struct vm_mmap *mmap=malloc(sizeof(struct vm_mmap));
@@ -495,9 +480,7 @@ mmap (int fd, void *addr){
 
   set_mmap(mmap,file,addr,file_size);
 
-  if(page_lazy_load(file,0,addr,file_size,(offset-file_size),true,PAGE_TYPE_MMAP)==false){
-    return -1;
-  }
+  if(!page_lazy_load(file,0,addr,file_size,(offset-file_size),true,PAGE_TYPE_MMAP)) return -1;
   list_push_back(&cur_thread->mmap_list,&mmap->elem);
   auto id = mmap->mapping_id;
   return id;
@@ -512,9 +495,7 @@ munmap(mapid_t mapping){
   while(iter!=end)
   {
     mmap=list_entry(iter,struct vm_mmap,elem);
-    if(mmap->mapping_id == mapping){
-      break;
-    }
+    if(mmap->mapping_id == mapping) break;
     iter=list_next(iter);
   }
     struct supp_page_table_entry *spte;
@@ -547,91 +528,19 @@ munmap(mapid_t mapping){
   free(mmap);
 }
 
-
-struct file_descriptor*
-getfile (struct thread *t, int fd)
-{
-  struct list_elem *e = NULL;
-  struct list *l = &t->fd_list;
-  struct file_descriptor *file_desc = NULL;
-  e = list_begin (l);
-  while (e != list_end (l))
-  {
-    file_desc = list_entry (e, struct file_descriptor, elem);
-    if (file_desc->fd == fd)
-      return file_desc;
-    e = list_next (e);
-  }
-  return NULL;
-}
-
-bool load_swap(struct supp_page_table_entry *spte)
-{
-  if(spte->type == PAGE_TYPE_SWAP)
-  {
-   void *frame = vm_get_frame (PAL_USER, spte);
-   if(!frame) return false;
-   
-   lock_acquire (&spte->spte_lock);
-   
-   swap_in (frame, spte->swap_id);
-   
-   spte->type = PAGE_TYPE_FILE;
-   spte->frame = frame;
-   
-   if (!install_page (spte->addr, frame, spte->writable))
-   {
-     vm_free_frame (frame);
-     return false;
-   }
-   
-   lock_release (&spte->spte_lock);
-    return  true;
-    }
-    else
-    {
-    void *frame = vm_get_frame (PAL_USER, spte);
-    if(!frame) return false;
-    lock_acquire (&spte->spte_lock);
-    lock_acquire (&file_lock);
-    file_seek (spte->file, spte->offset);
-
-
-    if(file_read (spte->file, frame, spte->read_bytes) != (int) spte->read_bytes)
-    {
-      vm_free_frame (frame);
-      lock_release (&file_lock);
-      return false;
-    }
-    lock_release (&file_lock);
-    memset (frame + spte->read_bytes, 0, spte->zero_bytes);
-    if (!install_page (spte->addr, frame, spte->writable))
-    {
-      vm_free_frame (frame);
-      return false;
-    } 
-      spte->frame = frame;
-      lock_release (&spte->spte_lock);
-     return true;
-    }
-}
-
 static void
-read_buf_page_fault_handler (void *fault_addr)
+buf_exception (void *fault_addr)
 {
   if (fault_addr == NULL ||!is_user_vaddr (fault_addr))
     exit (-1);
 
-  struct thread *cur = thread_current ();
   bool success = false;
 
-  if (!pagedir_get_page (cur->pagedir, fault_addr))
+  if (!pagedir_get_page (thread_current ()->pagedir, fault_addr))
   {
-    struct supp_page_table_entry *spte = find_spte (&cur->supp_page_table, fault_addr);;
+    struct supp_page_table_entry *spte = find_spte (&thread_current ()->supp_page_table, fault_addr);;
     if (spte != NULL) success = load_swap(spte);
     else if  (fault_addr >= intr_f->esp - 32) success = stack_grow (fault_addr);
     if (!success) exit (-1);      
   }
-  else
-    return;
 }

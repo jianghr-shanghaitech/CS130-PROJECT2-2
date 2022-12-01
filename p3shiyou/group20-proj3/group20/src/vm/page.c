@@ -5,6 +5,31 @@
 #include "userprog/syscall.h"
 #include "threads/vaddr.h"
 #include <stdio.h>
+
+struct file_descriptor*
+getfile (struct thread *t, int fd)
+{
+  struct list_elem *e = NULL;
+  struct list *l = &t->fd_list;
+  struct file_descriptor *file_desc = NULL;
+  e = list_begin (l);
+  while (e != list_end (l))
+  {
+    file_desc = list_entry (e, struct file_descriptor, elem);
+    if (file_desc->fd == fd)
+      return file_desc;
+    e = list_next (e);
+  }
+  return NULL;
+}
+void spte_grow(struct supp_page_table_entry *spte,void *addr,void *frame)
+{
+  spte->writable = true;
+  spte->addr = pg_round_down (addr);
+  spte->type = PAGE_TYPE_FILE;
+  spte->frame = frame;
+}
+
 void init_spte(struct supp_page_table_entry *spte,struct file *file, off_t ofs, uint8_t *upage, 
                      uint32_t read_bytes, uint32_t zero_bytes,
                      bool writable, int type,size_t page_read_bytes,size_t page_zero_bytes)
@@ -61,7 +86,6 @@ page_lazy_load(struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-
 bool stack_grow (void *addr)
 {
   struct supp_page_table_entry *spte = malloc (sizeof (struct supp_page_table_entry));
@@ -73,10 +97,8 @@ bool stack_grow (void *addr)
     return false;
   }
 
-  spte->writable = true;
-  spte->addr = pg_round_down (addr);
-  spte->type = PAGE_TYPE_FILE;
-  spte->frame = frame;
+  spte_grow(spte,addr,frame);
+
   lock_init (&spte->spte_lock);
 
 

@@ -7,6 +7,17 @@
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
 
+
+void set_mmap(struct vm_mmap *mmap,struct file * file,uint8_t * addr,uint32_t file_size)
+{
+  mmap->file=file;
+  mmap->upage=addr;
+  mmap->read_bytes=file_size;
+  
+  thread_current()->mmap_num+=1;
+  mmap->mapping_id=(mapid_t*)thread_current()->mmap_num;
+}
+
 void 
 free_all_mmap(struct list *mmap_list){
     while(!list_empty(mmap_list)){
@@ -38,5 +49,56 @@ free_all_mmap(struct list *mmap_list){
   file_close (mmap->file);
         list_remove(list_begin(mmap_list));
         free(mmap);
+    }
+}
+
+bool load_swap(struct supp_page_table_entry *spte)
+{
+  if(spte->type == PAGE_TYPE_SWAP)
+  {
+   void *frame = vm_get_frame (PAL_USER, spte);
+   if(!frame) return false;
+   
+   lock_acquire (&spte->spte_lock);
+   
+   swap_in (frame, spte->swap_id);
+   
+   spte->type = PAGE_TYPE_FILE;
+   spte->frame = frame;
+   
+   if (!install_page (spte->addr, frame, spte->writable))
+   {
+     vm_free_frame (frame);
+     return false;
+   }
+   
+   lock_release (&spte->spte_lock);
+    return  true;
+    }
+    else
+    {
+    void *frame = vm_get_frame (PAL_USER, spte);
+    if(!frame) return false;
+    lock_acquire (&spte->spte_lock);
+    lock_acquire (&file_lock);
+    file_seek (spte->file, spte->offset);
+
+    off_t read_success = file_read (spte->file, frame, spte->read_bytes) != (int) spte->read_bytes;
+    if(read_success)
+    {
+      vm_free_frame (frame);
+      lock_release (&file_lock);
+      return false;
+    }
+    lock_release (&file_lock);
+    memset (frame + spte->read_bytes, 0, spte->zero_bytes);
+    if (!install_page (spte->addr, frame, spte->writable))
+    {
+      vm_free_frame (frame);
+      return false;
+    } 
+      spte->frame = frame;
+      lock_release (&spte->spte_lock);
+     return true;
     }
 }
